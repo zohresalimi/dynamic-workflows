@@ -45,50 +45,101 @@
 @custom-variant dark (&:where(.dark, .dark *));
 
 /*
+ * ## The five system laws this file is the root of (UI redesign, 2026-08)
+ *
+ * Written here rather than in a doc because every rule below is a token
+ * decision, and a law kept somewhere else is a law that is read once:
+ *
+ * 1. **One raised card per page.** `--surface` + `--edge-strong` + a shadow is
+ *    the gate card and the modals, and nothing else. Inside a card, depth is a
+ *    background shift and an `--edge` hairline rule, never a second full
+ *    border; nesting stops at two. Headers and tables sit flush on
+ *    `--surface-canvas`.
+ * 2. **Mono is for machine-owned strings and tabular figures** — ids, paths,
+ *    commands, timestamps, table `<th>`. Everything a human named is
+ *    Instrument Sans, sentence case. `UiSectionLabel` is the app's only
+ *    uppercase-mono caption, and only as a group caption inside a card body.
+ * 3. **`--accent` is the primary action and the active nav item, nowhere
+ *    else.** Selection is the neutral `--select-tint` / `--select-edge` pair
+ *    below. Run states come only from ../lib/state-palette.ts.
+ * 4. **A status is said once per surface**: the topbar says it with
+ *    `ApprovalsMenu`'s count, the run header with `RunStatusPill`, the gate
+ *    card with one `StateChip`.
+ * 5. **Metadata is labelled pairs, never sentences**; prose (a limitation, a
+ *    health message) is never a chip.
+ *
  * The light theme: direction B's paper surfaces carrying direction A's
  * structure (the same surface/ink/edge/state roles, just re-lit). Every ink
  * and state value is contrast-verified against `--surface-raised`
- * (`#EDEAE4`), the darkest surface either can sit on — the ratio noted beside
- * each is that worst case, not the ratio against white.
+ * (`#E6E2D9`), the darkest surface either can sit on — the ratio noted beside
+ * each is that worst case, not the ratio against white. The redesign's light
+ * retune darkened every paper surface by roughly one step, so every ratio in
+ * this block was recomputed against the new worst case rather than carried
+ * over; `../styles/theme-contrast.test.ts` recomputes them from this file's
+ * own text on every run, which is what keeps the numbers below honest.
  */
 :root {
   /* Surfaces, darkest to lightest is not the order — canvas sits behind the
    * raised panels that sit on it, so it is deliberately *not* the darkest. */
-  --surface-canvas: #f4f2ee;
+  --surface-canvas: #ebe8e1;
   --surface: #ffffff;
-  --surface-raised: #edeae4;
-  --surface-inset: #f4f2ee;
+  --surface-raised: #e6e2d9;
+  --surface-inset: #f1eee8;
   --surface-code: #f7f5f1;
   --surface-control: #ffffff;
   --surface-overlay: rgb(25 26 24 / 0.4);
 
   /* Ink, worst-case ratio against --surface-raised in brackets. */
-  --ink: #191a18; /* 13.27 */
-  --ink-strong: #3e3b36; /* 8.47 */
-  --ink-muted: #5f5b54; /* 5.13 */
-  --ink-dim: #67625a; /* 5.04 */
-  --ink-faint: #6c675e; /* 4.68 */
+  --ink: #191a18; /* 13.51 */
+  --ink-strong: #3e3b36; /* 8.62 */
+  --ink-muted: #5f5b54; /* 5.22 */
+  --ink-dim: #67625a; /* 4.68 */
+  /* The retune's one forced ink move: `#6C675E` scored 4.34 against the new
+   * `--surface-raised` and failed the 4.5:1 floor, so it is darkened here
+   * rather than the floor being loosened. */
+  --ink-faint: #615c53; /* 5.13 */
 
   /* Edges are decorative — borders and separators, never text — so no 4.5:1
    * floor applies to them; they are picked for visibility against the
    * surfaces around them, not for a contrast ratio. */
-  --edge: #dcd7ce;
-  --edge-strong: #d3cec4;
-  --edge-control: #c9c3b8;
-  --edge-hover: #a29c91;
+  --edge: #d2ccc0;
+  --edge-strong: #bfb8a9;
+  --edge-control: #b3ab9b;
+  --edge-hover: #8a8375;
+  /* Declared and currently unused: the redesign took the dashed placeholder
+     off `UiEmptyState`, its only caller (a wireframe idiom saying "a thing
+     goes here" on a screen where nothing is coming). Kept rather than deleted
+     because it is one of the seven roles both themes define in step, and a
+     token removed from one block and not the other is how a theme starts to
+     have holes in it. */
   --edge-dashed: #c9c3b8;
 
   --focus-ring: #1d6a57;
 
   /* The seven state colours (KAR-16.1; names owned by ../lib/state-palette.ts).
    * Worst-case ratio against --surface-raised in brackets. */
-  --state-pending: #5a6270; /* 4.67 */
-  --state-running: #4f5f10; /* 5.36 */
-  --state-blocked: #855700; /* 5.20 */
-  --state-passed: #12694a; /* 5.07 */
-  --state-failed: #b3261e; /* 4.97 */
-  --state-abandoned: #6a655d; /* 4.82 */
-  --state-awaiting-human: #5b4bd6; /* 4.66 */
+  --state-pending: #5a6270; /* 4.76 */
+  --state-running: #4f5f10; /* 5.46 */
+  --state-blocked: #855700; /* 4.83 */
+  --state-passed: #12694a; /* 5.16 */
+  --state-failed: #b3261e; /* 5.06 */
+  /* Darkened with `--ink-faint` and for the same reason: `#6A655D` scored
+   * 4.47 against the new `--surface-raised`. */
+  --state-abandoned: #635f57; /* 4.92 */
+  --state-awaiting-human: #5b4bd6; /* 4.75 */
+
+  /*
+   * Law 3 — selection is hueless.
+   *
+   * A tint mixed from `--ink` rather than from `--focus-ring` or `--accent`:
+   * in the dark theme `--focus-ring` and `--accent` are the *same* lime, so a
+   * selection tint derived from either would re-leak the accent into a role
+   * law 3 exists to keep it out of. `--select-edge` is the same neutral the
+   * hover border already uses, so a selected row and a hovered one are one
+   * vocabulary at two strengths.
+   */
+  --select-tint: color-mix(in oklab, var(--ink) 8%, transparent);
+  --select-edge: var(--edge-hover);
 
   /*
    * KAR-25.1 AC4 — a fill *and* its own ink, declared together so no caller
@@ -116,12 +167,18 @@
    * font-size setting; rem tracks it. The px in each comment is what the
    * design prototype specifies, kept only as a reading aid.
    */
-  --text-2xs: 0.53125rem; /* 8.5px  — the mono micro-label */
-  --text-xs: 0.59375rem; /* 9.5px  — mono metrics */
+  /*
+   * The redesign retunes four rungs upward and **retires `--text-2xs`**. An
+   * 8.5px micro-label is below the size at which the mono face's figures stay
+   * legible on a laptop panel, and a ramp with a rung nobody should reach for
+   * is a rung somebody will. Every one of its former callers reads
+   * `--text-xs` now, which is the smallest size this application has.
+   */
+  --text-xs: 0.625rem; /* 10px   — mono metrics, and the smallest rung there is */
   --text-sm: 0.65625rem; /* 10.5px */
-  --text-base: 0.71875rem; /* 11.5px — the body size of a dense operator UI */
-  --text-md: 0.78125rem; /* 12.5px */
-  --text-lg: 0.8125rem; /* 13px   — panel titles */
+  --text-base: 0.75rem; /* 12px   — the body size of a dense operator UI */
+  --text-md: 0.8125rem; /* 13px */
+  --text-lg: 0.875rem; /* 14px   — panel titles */
   --text-xl: 1.1875rem; /* 19px   — screen headings */
   --text-2xl: 1.5rem; /* 24px   — the one page title */
 
@@ -136,7 +193,7 @@
   /* Shadows are theme-specific below, but declared here as the light values
    * because :root is where an un-themed reader (a browser with no `.dark`
    * class applied yet) needs them to already exist. */
-  --shadow-panel: 0 1px 2px rgb(25 26 24 / 0.06);
+  --shadow-panel: 0 1px 2px rgb(25 26 24 / 0.05), 0 2px 8px rgb(25 26 24 / 0.06);
   --shadow-modal: 0 20px 50px rgb(25 26 24 / 0.18);
 }
 
@@ -148,23 +205,33 @@
  * comments below are that record, not a tidiness pass.
  */
 .dark {
-  --surface-canvas: #0a0b0d;
-  --surface: #0f1114;
+  /*
+   * The redesign's dark surface ladder. It reads bottom-up rather than the
+   * other way round, and that is law 1 expressed in four hexes: a raised card
+   * has to be *lighter* than the canvas it sits on before a single border is
+   * painted, or the border becomes the only thing separating the two and every
+   * panel needs one. The canvas drops to near-black and `--surface` rises to
+   * meet it.
+   */
+  --surface-canvas: #08090b;
+  --surface: #101318;
   --surface-raised: #0c0d10;
-  --surface-inset: #101216;
+  --surface-inset: #171a20;
   --surface-code: #0e0f13;
-  --surface-control: #14161a;
+  --surface-control: #1a1e25;
   --surface-overlay: rgb(5 6 8 / 0.72);
 
-  --ink: #e9eaee; /* 15.07 */
-  --ink-strong: #d3d6dc; /* 12.44 */
-  --ink-muted: #9ca2ac; /* 7.05 */
+  --ink: #e9eaee; /* 13.90 */
+  --ink-strong: #d3d6dc; /* 11.48 */
+  --ink-muted: #9ca2ac; /* 6.51 */
   /* direction A writes #6B707A here, which scores 3.64 against
-   * --surface-control and fails the 4.5:1 floor; #8E949E (5.93) replaces it. */
-  --ink-dim: #8e949e; /* 5.93 */
+   * --surface-control and fails the 4.5:1 floor; #8E949E replaces it. */
+  --ink-dim: #8e949e; /* 5.48 */
   /* direction A writes #5C616B here, which scores 2.91 against
-   * --surface-control and fails; #7C828C (4.68) replaces it. */
-  --ink-faint: #7c828c; /* 4.68 */
+   * --surface-control and fails. #7C828C stood in until the ladder above
+   * lifted `--surface-control` to #1A1E25, where it scores 4.32 and fails in
+   * turn; #868C99 replaces it. */
+  --ink-faint: #868c99; /* 4.95 */
 
   --edge: #1c1e23;
   --edge-strong: #1e2128;
@@ -175,18 +242,26 @@
   --focus-ring: #c9f154;
 
   /* direction A writes #4A5261 here, which scores 2.30 against
-   * --surface-control and fails; #79839B (4.77) replaces it. */
-  --state-pending: #79839b; /* 4.77 */
-  --state-running: #c9f154; /* 13.97 */
-  --state-blocked: #f2c14e; /* 10.79 */
-  --state-passed: #4fd48a; /* 9.59 */
-  --state-failed: #ff8172; /* 7.45 */
-  --state-abandoned: #8b8794; /* 5.17 */
-  --state-awaiting-human: #8b7bff; /* 5.50 */
+   * --surface-control and fails. #79839B stood in until the surface ladder
+   * lifted `--surface-control` to #1A1E25, where it scores 4.40 and fails in
+   * turn; #8A94AB replaces it. */
+  --state-pending: #8a94ab; /* 5.50 */
+  --state-running: #c9f154; /* 12.89 */
+  --state-blocked: #f2c14e; /* 9.96 */
+  --state-passed: #4fd48a; /* 8.85 */
+  --state-failed: #ff8172; /* 6.87 */
+  --state-abandoned: #8b8794; /* 4.77 */
+  --state-awaiting-human: #8b7bff; /* 5.07 */
 
   /* KAR-25.1 AC4 — see the `:root` block's own comment on this pair. */
   --accent: #c9f154; /* 15.18 against --accent-ink */
   --accent-ink: #0a0b0d;
+
+  /* Law 3 — see the `:root` block's own comment. The formula is identical in
+   * both themes on purpose: a tint mixed from the theme's own `--ink` is
+   * hueless by construction, whichever way round the lights are. */
+  --select-tint: color-mix(in oklab, var(--ink) 8%, transparent);
+  --select-edge: var(--edge-hover);
 
   /* A shadow that reads on near-black does not read on paper, so unlike type
    * and shape these are themed: dark needs more spread and more opacity to

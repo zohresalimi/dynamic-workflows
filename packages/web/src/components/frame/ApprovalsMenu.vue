@@ -51,7 +51,15 @@ const store = useApprovalsStore();
         :data-approvals="store.count"
         :aria-label="`${store.count} waiting on you`"
       >
-        <UiChip variant="warn">
+        <!--
+          System law 4 — this is the topbar's whole statement about what is
+          waiting: a *count*, across every run. `info` and not `warn`: the
+          `--state-awaiting-human` token is the one this application already
+          spends on "a human is being asked", and `warn` borrowed
+          `--state-blocked`, which means something has gone wrong. Nothing has
+          gone wrong when a gate opens — that is the gate working.
+        -->
+        <UiChip variant="info">
           <BellRing :size="14" aria-hidden="true" />
           {{ store.count }}
         </UiChip>

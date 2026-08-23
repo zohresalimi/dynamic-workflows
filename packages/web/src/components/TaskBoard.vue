@@ -179,7 +179,7 @@ const emit = defineEmits<{ select: [id: string] }>();
   border-bottom: 1px solid var(--edge-strong);
   padding: 6px 8px; /* geometry — the head row's own padding */
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-faint);
@@ -232,8 +232,15 @@ const emit = defineEmits<{ select: [id: string] }>();
   border-left-color: var(--state-awaiting-human);
 }
 
+/*
+ * System law 3 — selection is hueless. This used to be a 10% mix of
+ * `--state-running`, which meant a *selected* row and a *running* row were the
+ * same green: the board had two vocabularies painted in one colour, and the
+ * row's own left border was already saying which state it was in.
+ * `--select-tint` is the application's one selection ground.
+ */
 .board__row[data-selected="true"] {
-  background: color-mix(in oklch, var(--state-running) 10%, transparent);
+  background: var(--select-tint);
 }
 
 .board__open {

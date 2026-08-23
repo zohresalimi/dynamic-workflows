@@ -195,7 +195,7 @@ function when(iso: string): string {
 
 .run-list__head-cell {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   letter-spacing: 0.1em;
   color: var(--ink-faint);
   text-transform: uppercase;

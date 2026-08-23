@@ -90,10 +90,19 @@ withDefaults(
   border-radius: var(--radius-lg);
 }
 
+/*
+ * System law 3 — the primary button is the one place `--accent` is spent on a
+ * screen (with the active nav item). It used to read `--state-running`, which
+ * is a *run status* owned by ../../lib/state-palette.ts and happens to share a
+ * hex with the accent today: the same colour, said for the wrong reason, so a
+ * palette edit that moved "running" would silently move every primary button.
+ * `--accent-ink` comes with the fill rather than being guessed at (KAR-25.1
+ * AC4), which is why the foreground moves off `--surface-canvas` too.
+ */
 .ui-button[data-variant="primary"] {
-  border-color: var(--state-running);
-  background: var(--state-running);
-  color: var(--surface-canvas);
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-ink);
   font-weight: 600;
 }
 

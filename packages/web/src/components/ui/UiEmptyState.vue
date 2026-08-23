@@ -7,11 +7,20 @@
  * sentence and the action are structural, not optional decoration a screen can
  * skip.
  *
- * The hover treatment reads `--state-running` rather than a border/ink pairing
- * invented here: an empty state is an invitation to act, and `running` is
- * already this application's colour for "something is about to happen" —
- * reusing it says the same thing with a token this file doesn't own a second
- * copy of.
+ * ## The redesign's three changes here, and the reason for each
+ *
+ * - **No dashed placeholder.** The dashed rectangle was a wireframe idiom: it
+ *   said "a thing goes here" on a screen where nothing is coming. What is
+ *   left is the sentence and the action, which are the parts an operator
+ *   reads (system law 1 — fewer boxes, not prettier ones).
+ * - **120px, not 210px.** The tile height was sized for a grid cell in the
+ *   prototype; used inline — a project's history, a run's board — it opened a
+ *   hole in the page proportional to how little there was to say.
+ * - **A neutral hover.** It used to read `--state-running`, which is a *run
+ *   status* owned by ../../lib/state-palette.ts. An empty list is not a
+ *   running anything, and system law 3 keeps the state palette for states;
+ *   `--edge-hover`/`--ink-muted` say "this responds" without borrowing a
+ *   meaning.
  */
 defineProps<{
   readonly title: string;
@@ -31,13 +40,13 @@ defineProps<{
 
 <style scoped>
 .ui-empty-state {
-  min-height: 210px; /* geometry — the prototype's empty-tile height */
+  min-height: 120px; /* geometry — an inline empty state, not a grid tile */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 8px; /* geometry — the stack gap between title, hint and action */
-  border: 1px dashed var(--edge-dashed);
+  border: 1px solid var(--edge);
   border-radius: var(--radius-xl);
   color: var(--ink-dim);
   transition:
@@ -46,8 +55,8 @@ defineProps<{
 }
 
 .ui-empty-state:hover {
-  border-color: var(--state-running);
-  color: var(--state-running);
+  border-color: var(--edge-hover);
+  color: var(--ink-muted);
 }
 
 .ui-empty-state__title {

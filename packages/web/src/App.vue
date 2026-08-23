@@ -61,7 +61,7 @@
  * how `RunStatusPill` has always read `useRunStore()` for itself rather than
  * being handed a status string.
  */
-import { onMounted, onUnmounted } from 'vue';
+import { computed, onMounted, onUnmounted } from 'vue';
 import { RouterView, useRoute, useRouter } from 'vue-router';
 import { MAIN_CONTENT_ID } from './app/ids.ts';
 import { installKeyboardMap } from './app/keyboard.ts';
@@ -103,6 +103,26 @@ const { isDark, toggleTheme } = useTheme();
  * nothing on a tokenless tab.
  */
 useApprovals();
+
+/**
+ * Whether the view under the band already draws the open gate in full.
+ *
+ * The two workflows routes mount `views/ProjectWorkflowsView.vue`, which shows
+ * the run's gate as `components/gate/GateDecisionCard.vue` — the page's one
+ * raised card, with the spec beside the buttons. On those two routes the band
+ * says the same thing twice, so it collapses to one line and a link to the
+ * card's own anchor. Everywhere else it stays the full form, because KAR-22.5
+ * AC1's promise is that a gate is answerable from *anywhere*, and "anywhere"
+ * is every other route in this application.
+ *
+ * The run the band shows is `run.openGate`, which is the store's one open run
+ * — the same run those two routes put on screen — so there is no third case
+ * where the route matches but the gate belongs to something else.
+ */
+const GATE_IN_FULL_ROUTES = new Set(['project-workflows', 'project-run']);
+const routeShowsGateInFull = computed<boolean>(() =>
+  GATE_IN_FULL_ROUTES.has(String(route.name ?? '')),
+);
 
 /**
  * KAR-26.5 — the one `GET /api/projects` read, provided here so the switcher
@@ -188,7 +208,11 @@ onUnmounted(() => {
         run and therefore no gate.
       -->
       <div class="shell__gate">
-        <RunGateBanner :run-id="run.runId ?? ''" :gate="run.openGate" />
+        <RunGateBanner
+          :run-id="run.runId ?? ''"
+          :gate="run.openGate"
+          :compact="routeShowsGateInFull"
+        />
       </div>
 
       <!--
@@ -238,9 +262,16 @@ onUnmounted(() => {
   padding: 0.5rem 0.75rem 0;
 }
 
+/* System law 1 — the page's ground is the canvas, so a raised card is raised
+   *against something*. Before this, `<body>`'s `--surface` showed through and
+   every panel had to draw a border to be visible at all; with the canvas
+   behind them, the borders are a choice rather than a necessity. The value is
+   a token, never a literal: `./styles/theme.css` is the one file allowed to
+   know what colour anything is (`PALETTE_FILES`). */
 .shell__main {
   min-height: 0;
   padding: 0.75rem;
   overflow: auto;
+  background: var(--surface-canvas);
 }
 </style>

@@ -4,7 +4,7 @@
  * component so a label is never typed as a bare `<span>` beside an `<input>`
  * again.
  *
- * The label carries UiSectionLabel's exact type treatment (mono, `.12em`
+ * The label carries UiSectionLabel's exact type treatment (mono, `.08em`
  * tracking, `--ink-faint`, uppercase) without importing that component: a
  * `<label>` and a section heading are different elements answering to
  * different things (one names a control, one names a region), and reaching
@@ -69,7 +69,11 @@ const inputId = props.id ?? `ui-field-${generatedId}`;
 .ui-field__label {
   font-family: var(--font-mono);
   font-size: var(--text-xs);
-  letter-spacing: 0.12em;
+  /* Tracked with `UiSectionLabel`'s own, deliberately: the header comment
+     already records that this label *is* that treatment on an element
+     `UiSectionLabel` cannot render, so the two move together or the copy has
+     started to drift. */
+  letter-spacing: 0.08em;
   color: var(--ink-faint);
   text-transform: uppercase;
   margin-bottom: 6px; /* geometry — the label-to-input gap */

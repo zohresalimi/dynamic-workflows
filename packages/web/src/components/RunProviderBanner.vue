@@ -14,6 +14,16 @@
  * and it has none on which to announce either. An empty banner claiming
  * "unknown provider" would be a fact this tab does not have.
  *
+ * ## Where this still renders after the redesign
+ *
+ * The topbar, and only where the route below it has no run header of its own
+ * (`./frame/AppTopBar.vue` decides that). On the project's own workflows view
+ * the same facts appear as labelled pairs — `./RunMetaStrip.vue` — because a
+ * header is somewhere you look for a field, not somewhere you read a sentence
+ * (system law 5). Both read `run.provider.chosen`; only this one composes the
+ * announcement, so `test/one-provider-route-reducer.test.ts`'s "three callers"
+ * is still three.
+ *
  * Verifies: EPIC-19-S67 · AC4
  */
 import { announceProviderChoice } from '@DeFlow/core';
@@ -54,16 +64,19 @@ const announcement = computed<string | null>(() =>
   flex-direction: column;
   gap: 0.25rem;
   margin: 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-md);
   color: var(--ink-muted);
 }
 
 .run-provider__line {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   overflow-wrap: anywhere;
 }
 
+/* Prose about what this machine cannot do — a warning, in the warning colour,
+   never a chip (system law 5). `--ink-warn` was never a declared token: the
+   fallback was doing all the work, which is a colour nobody chose. */
 .run-provider__limitation {
-  color: var(--ink-warn, var(--ink-muted));
+  color: var(--state-blocked);
 }
 </style>

@@ -48,8 +48,11 @@ import { useApiClient } from '../api/provide.ts';
 import { readToken } from '../api/token.ts';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
 import { openLazyRunsFeed, RUNS_FEED } from '../app/useRunList.ts';
+import GateDecisionCard from '../components/gate/GateDecisionCard.vue';
+import GraphEmptyNote from '../components/graph/GraphEmptyNote.vue';
+import RunHeader from '../components/RunHeader.vue';
 import TaskBoard from '../components/TaskBoard.vue';
-import { UiButton, UiCard, UiChip, UiEmptyState } from '../components/ui/index.ts';
+import { UiButton, UiCard, UiEmptyState } from '../components/ui/index.ts';
 import { RUN_STATUS_DISPLAY, stateVar } from '../lib/state-palette.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
@@ -312,88 +315,180 @@ function dotColour(status: RunStatus): string {
   return stateVar(RUN_STATUS_DISPLAY[status]);
 }
 
-/** `UiChip`'s tone for a health state — the same mapping `ProjectsView` uses
- * for the same field, so one project reads the same way on both screens. */
-function healthTone(state: string): 'ok' | 'warn' | 'error' {
-  if (state === 'ok') return 'ok';
-  if (state === 'missing') return 'warn';
-  return 'error';
-}
+/* ── the redesign's three layout states ─────────────────────────────────── */
+
+/**
+ * The gate the run on screen has stopped on, or `null`.
+ *
+ * `useRunStore().openGate` and a real check that it belongs to *this* run —
+ * `run.runId === currentRun`, not merely "some run is on screen". The store
+ * holds one run at a time, so the window is a single render tick, but the card
+ * below is handed its `run-id` from the route and its `gate` from the store,
+ * and two sources for one fact is how the previous run's gate survives a route
+ * change silently (EPIC-22-S43's whole subject, one surface over). The check
+ * costs a string compare and makes the two sources agree by construction.
+ */
+const openGate = computed(() =>
+  currentRun.value !== null && run.runId === currentRun.value ? run.openGate : null,
+);
+
+/** No plan yet, and the run has stopped to ask a human something. */
+const pendingPlan = computed(() => run.planNodes.length === 0 && openGate.value !== null);
+
+/**
+ * No plan yet and nothing being asked — the run is still arriving.
+ *
+ * `hydratedFromSeq === 0` is the honest reading of "this tab has not folded a
+ * hydrate for this run yet", and it is a store ref rather than a connection
+ * status because the connection belongs to `PlanGraphView` (one feed per run,
+ * `test/one-workspace-surface.test.ts`). A second `useRunFeed()` here to read a
+ * status word would be a second subscription, which is the exact thing that
+ * guard exists to stop.
+ */
+const hydratingPlan = computed(
+  () => currentRun.value !== null && run.planNodes.length === 0 && openGate.value === null,
+);
+
+const feedStatus = computed(() => (run.hydratedFromSeq === 0 ? 'hydrating' : 'idle'));
+
+/** Either strip state — the layout with no 3fr/2fr split in it. */
+const stripped = computed(() => pendingPlan.value || hydratingPlan.value);
+
+/** When the run on screen was created, for the header's `started` pair. */
+const startedAt = computed<string | null>(
+  () => history.value.find((row) => row.runId === currentRun.value)?.createdAt ?? null,
+);
 </script>
 
 <template>
-  <div class="workspace" data-project-workspace :data-project="projectId">
+  <div
+    class="workspace"
+    :class="{ 'workspace--pending': stripped }"
+    data-project-workspace
+    :data-project="projectId"
+  >
     <!--
-      KAR-24.7 AC4 — the one "card" shape this screen has (the board and the
-      history below are the dense-row table, not a card). Everything else in
-      this header is content, not chrome, so it sits inside `UiCard`'s own
-      slot rather than growing a second bordered box beside it.
+      Everything above the graph is one grid child, so the grid stays the three
+      rows it has always been — header block, the graph-and-board row that has
+      to be able to *fill*, and the history. A gate card placed as a fourth
+      row of its own would have taken the `minmax(16rem, 1fr)` track the graph
+      needs, and the symptom is a 16rem-tall decision card with a squashed
+      graph beside it.
     -->
-    <UiCard variant="raised" class="workspace__head-card">
-      <header class="workspace__head">
-        <h1 class="workspace__title">
-          <RouterLink to="/projects" class="workspace__back">Projects</RouterLink>
-          <span class="workspace__name" data-workspace-project-name>
-            {{ project?.name ?? projectId }}
-          </span>
-        </h1>
-        <code v-if="project" class="workspace__path">{{ project.path }}</code>
-        <!--
-          A project whose directory has gone still shows everything below; it
-          just says so, in the daemon's own sentence (EPIC-22-S45). The chip
-          repeats the same fact with a token; the sentence stays the carrier.
-        -->
-        <p
-          v-if="project?.health.message"
-          class="workspace__health"
-          data-workspace-health
-          role="status"
-        >
-          <UiChip :variant="healthTone(project.health.state)" mono
-            >{{ project.health.state }}</UiChip
+    <div class="workspace__top">
+      <!--
+        System law 1 — the head card is gone. This page's one raised object is
+        the gate card below; a bordered, shadowed header above it would be a
+        second raised box, and it would win by being first. The header is
+        content on the canvas now (`../components/RunHeader.vue`), and it
+        carries the run facts the topbar used to squeeze between a breadcrumb
+        and a search field.
+      -->
+      <div class="workspace__head-card">
+        <RunHeader
+          :task="run.submittedTask"
+          :project-name="project?.name ?? projectId"
+          :project-path="project?.path ?? null"
+          :health-message="project?.health.message ?? null"
+          :started-at="startedAt"
+        />
+        <RouterLink to="/projects" class="workspace__back">Projects</RouterLink>
+      </div>
+
+      <!--
+        AC6, KAR-24.7 AC5 — a project with no runs says so and points at the
+        composer, through the one component every empty list on this screen
+        routes through. There is deliberately no canvas here: an empty graph
+        reads as a broken page rather than as "nothing has run yet".
+      -->
+      <UiEmptyState
+        v-if="nothingHasRun"
+        class="workspace__empty"
+        data-workspace-empty
+        title="Nothing has run in this project yet"
+        hint="Start one with the composer — describe the task, pick the agent, and this page will show its graph as it happens."
+      >
+        <template #action>
+          <UiButton
+            variant="primary"
+            size="md"
+            data-workspace-compose
+            @click="router.push({ name: 'new-run', params: { projectId: props.projectId } })"
           >
-          {{ project.health.message }}
-        </p>
-      </header>
-    </UiCard>
+            <UserRound :size="12" aria-hidden="true" />
+            Start a run
+          </UiButton>
+        </template>
+      </UiEmptyState>
 
-    <!--
-      AC6, KAR-24.7 AC5 — a project with no runs says so and points at the
-      composer, through the one component every empty list on this screen
-      routes through. There is deliberately no canvas here: an empty graph
-      reads as a broken page rather than as "nothing has run yet".
-    -->
-    <UiEmptyState
-      v-if="nothingHasRun"
-      class="workspace__empty"
-      data-workspace-empty
-      title="Nothing has run in this project yet"
-      hint="Start one with the composer — describe the task, pick the agent, and this page will show its graph as it happens."
-    >
-      <template #action>
-        <UiButton
-          variant="primary"
-          size="md"
-          data-workspace-compose
-          @click="router.push({ name: 'new-run', params: { projectId: props.projectId } })"
-        >
-          <UserRound :size="12" aria-hidden="true" />
-          Start a run
-        </UiButton>
-      </template>
-    </UiEmptyState>
-
-    <template v-else-if="currentRun !== null">
-      <section class="workspace__graph" aria-label="The run's plan graph">
+      <template v-else-if="currentRun !== null">
         <!--
-          AC1 — EPIC-17's canvas, mounted rather than reimplemented. It owns the
-          run's feed (`../app/useRunFeed.ts`), so this view opens no
-          subscription of its own and there is exactly one per run.
+          The decision, when there is one — the page's one raised card, and
+          deliberately above the graph rather than beside it. A run that has
+          stopped to ask a human a question has exactly one thing to do, and
+          the previous layout put it in a hairline band above the fold at the
+          same weight as everything else.
         -->
+        <GateDecisionCard
+          v-if="openGate"
+          class="workspace__gate"
+          :run-id="currentRun"
+          :gate="{
+            node: openGate.node,
+            prompt: openGate.prompt,
+            options: openGate.options,
+            requestedSeq: openGate.seq,
+          }"
+        />
+
+        <!--
+          The strip that stands in for the 3fr/2fr split while there is no plan
+          to draw. A run waiting at its spec gate has no nodes and no tasks,
+          and an empty canvas plus an empty board is two hundred pixels of
+          nothing above the thing the operator is actually here for.
+        -->
+        <UiCard
+          v-if="stripped"
+          variant="inset"
+          class="workspace__strip"
+          data-workspace-pending-plan
+        >
+          <span v-if="pendingPlan" class="workspace__strip-text">
+            Plan and tasks appear the moment spec-approval passes.
+          </span>
+          <GraphEmptyNote v-else :run-id="currentRun" :status="feedStatus" />
+          <RouterLink
+            class="workspace__strip-link"
+            :to="{ name: 'plan-evolution', params: { projectId, runId: currentRun } }"
+            >Evolution</RouterLink
+          >
+        </UiCard>
+      </template>
+    </div>
+
+    <template v-if="!nothingHasRun && currentRun !== null">
+      <!--
+        AC1 — EPIC-17's canvas, mounted rather than reimplemented. It owns the
+        run's feed (`../app/useRunFeed.ts`), so this view opens no
+        subscription of its own and there is exactly one per run.
+
+        **Never `v-if`d, only collapsed.** Unmounting it would close the run's
+        subscription, and the strip above is shown in exactly the states where
+        the run is still arriving — so a `v-if` here would stop the feed that
+        is supposed to end the wait. `height: 0; overflow: hidden` keeps the
+        one canvas mounted and the one feed open
+        (`test/one-workspace-surface.test.ts` is the guard that says there is
+        only ever one of each).
+      -->
+      <section
+        class="workspace__graph"
+        :class="{ 'workspace__graph--tucked': stripped }"
+        aria-label="The run's plan graph"
+      >
         <PlanGraphView :run-id="currentRun" />
       </section>
 
-      <aside class="workspace__board">
+      <aside v-if="!stripped" class="workspace__board">
         <TaskBoard
           :bodies="rows"
           :selected="ui.selectedNodeId"
@@ -522,57 +617,98 @@ function healthTone(state: string): 'ok' | 'warn' | 'error' {
   min-height: 0;
 }
 
-.workspace__head-card,
-.workspace__empty,
+/*
+ * The pending layout: one column, and the middle row sized by its content
+ * rather than by a graph that has no nodes in it. The modifier is what
+ * switches between "there is a plan to look at" and "there is not", so the
+ * two grids are stated side by side rather than one being a pile of overrides
+ * on the other.
+ */
+.workspace--pending {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto;
+}
+
+.workspace__top,
 .workspace__history {
   grid-column: 1 / -1;
+  min-width: 0;
 }
 
-.workspace__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 12px; /* geometry — the header's own gutter */
+/* The header block, the gate card and the strip, stacked — one grid child,
+   for the reason the template's own comment gives. */
+.workspace__top {
+  display: grid;
+  gap: 12px; /* geometry — matches the page's own row gap */
+  align-content: start;
 }
 
-.workspace__title {
-  display: flex;
-  align-items: baseline;
-  gap: 8px; /* geometry — crumb-to-name gutter */
-  font-size: var(--text-lg);
-  margin: 0;
+.workspace__head-card {
+  display: grid;
+  gap: 6px; /* geometry — header-to-crumb gap */
+  min-width: 0;
 }
 
 .workspace__back {
-  font-size: var(--text-sm);
-  color: var(--ink-muted);
-}
-
-.workspace__path {
-  font-family: var(--font-mono);
   font-size: var(--text-xs);
-  color: var(--ink-faint);
+  color: var(--ink-muted);
+  justify-self: start;
 }
 
-/* The message is always a sentence: the colour is an extra cue, never the
-   carrier (docs/12 §9.2). The chip beside it says the same word with a token. */
-.workspace__health {
-  display: flex;
-  align-items: center;
-  gap: 8px; /* geometry — chip-to-message gutter */
-  color: var(--state-blocked);
-  font-size: var(--text-sm);
-  margin: 0;
-  flex-basis: 100%;
-}
+/* `.workspace__path` used to live here. The element moved into
+   `../components/RunHeader.vue`, and scoped CSS does not cross that boundary,
+   so the rule was styling nothing while looking like it styled the path —
+   `.run-header__project` sets the same mono/`--text-xs`/`--ink-faint`
+   treatment on the line that contains it, in the file that renders it. The
+   class name went with the rule; the path is a bare `<span>` there now. */
 
 .workspace__empty {
   max-width: 40rem;
 }
 
+/* One slim row, never a panel: it is a sentence about something that has not
+   happened yet, and giving it panel height would be giving it panel weight. */
+.workspace__strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px; /* geometry — sentence-to-link gutter */
+  min-height: 56px; /* geometry — the strip's own height */
+  box-sizing: border-box;
+}
+
+.workspace__strip-text {
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
+}
+
+.workspace__strip-link {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  margin-left: auto;
+}
+
+/* A bordered panel with no shadow (system law 1) — the raised treatment on
+   this page belongs to the gate card alone. */
 .workspace__graph {
   min-height: 0;
   position: relative;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  background: var(--surface);
+}
+
+/*
+ * Collapsed, never unmounted — see the template's comment. Zero height rather
+ * than `display: none` so the renderer inside keeps a box to observe and
+ * re-fits when the plan arrives and the panel opens back up.
+ */
+.workspace__graph--tucked {
+  height: 0;
+  min-height: 0;
+  border: none;
+  overflow: hidden;
 }
 
 .workspace__board {
@@ -618,7 +754,7 @@ function healthTone(state: string): 'ok' | 'warn' | 'error' {
 
 .workspace__history-head-cell {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   letter-spacing: 0.1em;
   color: var(--ink-faint);
   text-transform: uppercase;
@@ -646,8 +782,14 @@ function healthTone(state: string): 'ok' | 'warn' | 'error' {
   background: var(--surface-inset);
 }
 
+/*
+ * System law 3 — "this is the run you are looking at" is a selection, not a
+ * run state. It used to be an 8% mix of `--state-running`, which made the
+ * lime mean three things on one page: the primary action, the running status,
+ * and the current row.
+ */
 .workspace__history-row[data-current="true"] {
-  background: color-mix(in oklch, var(--state-running) 8%, transparent);
+  background: var(--select-tint);
 }
 
 .workspace__history-cell--run {
@@ -707,5 +849,23 @@ function healthTone(state: string): 'ok' | 'warn' | 'error' {
   margin-top: 4px; /* geometry — the gate line's own offset from the row above it */
   font-size: var(--text-xs);
   color: var(--state-awaiting-human);
+}
+
+/*
+ * Below 820px the rail is already gone (`../components/frame/AppRail.vue`'s
+ * own breakpoint) and this page stops being two columns: the board goes under
+ * the graph rather than beside it, bounded so it cannot push the graph off
+ * screen entirely. The gate card's own narrow padding is its file's business,
+ * not this one's.
+ */
+@media (max-width: 819px) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(16rem, 1fr) auto auto;
+  }
+
+  .workspace__board {
+    max-height: 40vh;
+  }
 }
 </style>

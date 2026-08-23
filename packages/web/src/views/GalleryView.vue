@@ -673,19 +673,19 @@ const tableRows = DISPLAY_STATES.slice(0, 3).map((state, index) => ({
   height: 28px; /* geometry — the swatch chip */
   border-radius: var(--radius-sm);
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
 }
 
 .gallery__token-name {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   color: var(--ink-faint);
   flex: 1;
 }
 
 .gallery__token-value {
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   color: var(--ink-muted);
 }
 
