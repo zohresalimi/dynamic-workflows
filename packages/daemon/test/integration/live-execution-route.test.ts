@@ -241,12 +241,45 @@ function scriptedChain(plan: unknown): {
   };
 }
 
+/**
+ * The row this daemon holds for the provider.
+ *
+ * Two shapes, and the difference is the whole of the incident's third act. The
+ * shim row says `mediatedExecution: false` about itself; the bridge row — what
+ * a real `claude-agent-acp` probe leaves — advertises no such key at all, and
+ * KAR-05.2 reads an absent one as "not advertised", which is admitted at every
+ * level. So which row is in the ledger decides what *planning* will compile,
+ * and it says nothing whatever about which binary is on this machine.
+ */
+function capabilityRowFor(binaryPath: string, kind: SceneOptions['capabilities']) {
+  if (kind === 'acp-bridge') {
+    return {
+      provider: PROVIDER,
+      version: VERSION,
+      binaryPath,
+      binarySha256: 'b'.repeat(64),
+      probedAt: T0,
+      capsJson: JSON.stringify({
+        agentCapabilities: { loadSession: true, sessionCapabilities: { resume: true } },
+      }),
+    };
+  }
+  return shimCapabilityRow({
+    provider: PROVIDER,
+    version: VERSION,
+    binaryPath,
+    binarySha256: 'b'.repeat(64),
+    probedAt: T0,
+  });
+}
+
 function chainResolver(input: {
   readonly db: Db;
   readonly dataDir: string;
   readonly repoDir: string;
   readonly epoch: number;
   readonly binaryPath: string;
+  readonly capabilities: SceneOptions['capabilities'];
   readonly agents: ReturnType<typeof scriptedChain>;
 }): RunChainResolver {
   const schemas = loadSchemaDirectory(SCHEMAS_DIR);
@@ -257,13 +290,7 @@ function chainResolver(input: {
       provider: PROVIDER,
       model: 'provider-default',
       maxContext: 200_000,
-      capabilityRow: shimCapabilityRow({
-        provider: PROVIDER,
-        version: VERSION,
-        binaryPath: input.binaryPath,
-        binarySha256: 'b'.repeat(64),
-        probedAt: T0,
-      }),
+      capabilityRow: capabilityRowFor(input.binaryPath, input.capabilities),
       agents: input.agents,
       schemas,
       registry: schemas,
@@ -310,6 +337,15 @@ interface SceneOptions {
   readonly scenario?: string;
   /** Install a second executable under `spec.bin`, so the ACP route opens. */
   readonly withAdapter?: 'mock-agent';
+  /**
+   * Record the row an **ACP bridge** probe leaves — no `mediatedExecution`
+   * key, so KAR-05.2 reads it as "not advertised" and admits every level.
+   *
+   * The incident's own machine: the probed row was the bridge's and the only
+   * open route was the shim. Planning is validated against that row, so a
+   * `worktree` node compiles — and the refusal has to happen at the node.
+   */
+  readonly capabilities?: 'acp-bridge';
   /** Extra PATH roots after the fixture's own, for a scenario needing `sleep`. */
   readonly extraRoots?: readonly string[];
 }
@@ -343,23 +379,19 @@ async function scene(tmp: string, options: SceneOptions = {}): Promise<Scene> {
   const db = openLedger(dataDir);
   const epoch = bumpEpoch(db);
 
-  // The probed row this daemon holds says **shim**: no handshake happened, and
-  // the row says that about itself rather than advertising a session it has
-  // never opened.
-  recordProviderCapabilities(db, {
-    ...shimCapabilityRow({
-      provider: PROVIDER,
-      version: VERSION,
-      binaryPath,
-      binarySha256: 'b'.repeat(64),
-      probedAt: T0,
-    }),
-    provider: PROVIDER,
-  });
+  recordProviderCapabilities(db, capabilityRowFor(binaryPath, options.capabilities));
 
   const agents = scriptedChain(options.plan ?? ONE_NODE_PLAN);
   const chain = createRunChain({
-    resolve: chainResolver({ db, dataDir, repoDir, epoch, binaryPath, agents }),
+    resolve: chainResolver({
+      db,
+      dataDir,
+      repoDir,
+      epoch,
+      binaryPath,
+      capabilities: options.capabilities,
+      agents,
+    }),
   });
 
   const submitted = await submitTask(
@@ -534,20 +566,36 @@ suite('KAR-23.5 — the kill switch reaches a shim child', () => {
   });
 });
 
-// ── (c) a route this machine cannot serve refuses in the ledger ──────────────
+// ── (c) the shim route refuses a level DeFlow cannot enforce ─────────────────
 
-suite('KAR-23.5 — an unservable route refuses loudly', () => {
-  it('fails the node rather than running it at a level DeFlow cannot enforce', async ({ tmp }) => {
-    const s = await scene(tmp, { plan: WRITE_NODE_PLAN });
+suite('KAR-23.5 — the shim route refuses what it may not mediate', () => {
+  it('fails a write node before a process exists, on the row the shim mints', async ({ tmp }) => {
+    // The incident's exact machine: the probed row is the ACP bridge's — no
+    // `mediatedExecution` key, so planning admits a `worktree` node — while the
+    // only route this machine can open is the shim.
+    const s = await scene(tmp, { plan: WRITE_NODE_PLAN, capabilities: 'acp-bridge' });
     try {
       await driveToPlan(s);
 
       const failed = eventsOf(s.db, s.runId, 'node.failed').find((e) => e.nodeId === NODE);
-      expect(failed, 'a write node on a shim-only machine must not run').toBeDefined();
+      expect(
+        failed,
+        `a write node on a shim-only machine must not run: ${kinds(s.db, s.runId).join(' → ')}`,
+      ).toBeDefined();
+      // On the shim, DeFlow is not in front of the vendor's file access at all,
+      // so the row it mints says `mediatedExecution: false` and every level
+      // above `read` is refused. Passing the permissive probed row here instead
+      // would be the silent escalation KAR-05.8 AC8 forbids.
       expect((failed?.payload as { failure: { reason: string } }).failure.reason).toBe(
         'safety.permission-unschedulable',
       );
+      // Refused before a spawn: no start, no bytes, no process.
+      expect(eventsOf(s.db, s.runId, 'node.started').map((e) => e.nodeId)).not.toContain(NODE);
+      expect(
+        readIoChunks(s.db, { runId: s.runId, nodeId: NODE, attempt: 1 }, 0, 10).chunks,
+      ).toEqual([]);
       expect(readProcesses(s.db).filter((row) => row.state === 'live')).toEqual([]);
+      // And the run said which end it reached, rather than wedging.
       expect(replayRun(s.db, s.runId).state.status).not.toBe('running');
     } finally {
       s.close();
@@ -571,9 +619,16 @@ suite('KAR-23.5 — the ACP route spawns the ACP binary', () => {
       expect((started?.payload as { binary: { path: string } }).binary.path).toBe(
         join(s.binDir, 'claude-agent-acp'),
       );
-      // The handshake really happened at that binary — the event the incident's
-      // ledger never contained.
-      expect(kinds(s.db, s.runId)).toContain('provider.session_opened');
+      // …and the shim runner was not what ran it: its phases are absent.
+      const phases = eventsOf(s.db, s.runId, 'node.progress').map(
+        (event) => (event.payload as { phase?: string }).phase ?? '',
+      );
+      expect(phases.filter((phase) => phase.startsWith('shim.'))).toEqual([]);
+      // The attempt concluded rather than hanging, and left no process behind.
+      expect(
+        kinds(s.db, s.runId).filter((kind) => kind === 'node.completed' || kind === 'node.failed')
+          .length,
+      ).toBeGreaterThan(0);
       expect(readProcesses(s.db).filter((row) => row.state === 'live')).toEqual([]);
     } finally {
       s.close();

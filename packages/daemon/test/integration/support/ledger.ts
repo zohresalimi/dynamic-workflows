@@ -7,23 +7,11 @@
  * SQLite transaction assigning a real `seq` observes that
  * (docs/14-testing-strategy.md §7).
  */
-import type {
-  AgentProcessKey,
-  AgentProcessRecord,
-  EventRecord,
-  IoRecord,
-  LedgerSink,
-  ProcessRegistry,
-} from '@DeFlow/adapters';
+import type { LedgerSink, ProcessRegistry } from '@DeFlow/adapters';
 import type { Db, EventSeq, RunId } from '@DeFlow/core';
-import {
-  appendEventsWithProcess,
-  clearProcess,
-  openLedger,
-  readEpoch,
-  readRange,
-} from '@DeFlow/ledger';
+import { openLedger, readEpoch, readRange } from '@DeFlow/ledger';
 import { sqliteLedgerSink } from '../../../src/exec/ledger-sink.ts';
+import { sqliteProcessRegistry } from '../../../src/exec/process-registry.ts';
 
 export interface TestLedger {
   readonly db: Db;
@@ -50,7 +38,7 @@ export interface TestLedger {
  * near-copy would be asserting against a port nothing in production uses —
  * `appendAll`'s single transaction above all (KAR-14.1 AC1).
  */
-export { sqliteLedgerSink };
+export { sqliteLedgerSink, sqliteProcessRegistry };
 
 export function openTestLedger(dataDir: string, runId: RunId): TestLedger {
   const db = openLedger(dataDir);
@@ -75,33 +63,12 @@ export function openTestLedger(dataDir: string, runId: RunId): TestLedger {
     }
   };
 
-  const processes: ProcessRegistry = {
-    appendWithProcess(event: EventRecord, row: AgentProcessRecord): Promise<EventSeq> {
-      const [seq] = appendEventsWithProcess(
-        db,
-        [
-          {
-            runId,
-            ts: event.ts,
-            kind: event.kind,
-            v: event.v,
-            epoch,
-            ...(event.nodeId === undefined ? {} : { nodeId: event.nodeId }),
-            ...(event.attempt === undefined ? {} : { attempt: event.attempt }),
-            ...(event.ikey === undefined ? {} : { ikey: event.ikey }),
-            payload: event.payload,
-          },
-        ],
-        row,
-        { spillTo: dataDir },
-      );
-      return Promise.resolve(seq as EventSeq);
-    },
-    clear(key: AgentProcessKey): Promise<void> {
-      clearProcess(db, key);
-      return Promise.resolve();
-    },
-  };
+  // KAR-23.5 — the production registry, not a near-copy. It lived only here
+  // until the day an execution node needed one and `liveAgentPerformer` passed
+  // none, so the kill switch answered `nothing-running` while three vendor
+  // children were alive; a spec asserting against a second implementation
+  // would have been green through all of it.
+  const processes: ProcessRegistry = sqliteProcessRegistry({ db, runId, epoch, dataDir });
 
   return {
     db,

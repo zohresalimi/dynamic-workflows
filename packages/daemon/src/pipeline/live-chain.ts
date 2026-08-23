@@ -46,7 +46,7 @@
  *
  * Verifies: EPIC-19-S16, EPIC-19-S21 · KAR-19.3 AC1, AC2
  */
-import type { CapabilityRow } from '@DeFlow/adapters';
+import type { CapabilityRow, ProviderResolution } from '@DeFlow/adapters';
 import { resolveProviderStates, usableProviders } from '@DeFlow/adapters';
 import type { Clock, Handle, RunId } from '@DeFlow/core';
 import { ProviderIdSchema } from '@DeFlow/core';
@@ -137,10 +137,31 @@ export interface LiveChainOptions {
 /** The adapter a turn runs on, and the record that it was probed. */
 export interface Chosen {
   readonly provider: string;
+  /**
+   * The **vendor CLI** (`spec.shim.bin`), absolute.
+   *
+   * Unchanged in meaning: the three pre-execution turns are driven through the
+   * vendor's own CLI because the return contract rides on a flag only the CLI
+   * has, and they keep reading this field. It is emphatically *not* "the binary
+   * to spawn" — on the ACP route that is `spec.bin`, and reading this one there
+   * is the 2026-08-24 defect (KAR-23.5): the plain vendor CLI, spoken to in
+   * JSON-RPC, which never handshakes and never exits.
+   */
   readonly binaryPath: string;
   /** The probed row, verbatim — what `admitFraming` reads, and the only place
    * a capability may be read from (KAR-05.2). */
   readonly row: CapabilityRow;
+  /**
+   * KAR-23.5 — the machine reduction this choice was made from.
+   *
+   * Carried rather than recomputed so a caller that needs to know *which route
+   * is open* asks `providerRoutes`/`binaryForRoute` of the same structure
+   * `doctor`, `admitRun` and the picker read
+   * (`test/one-provider-route-reducer.test.ts` is what keeps that true). A
+   * second reduction of the same machine agrees until the moment it does not,
+   * and that moment is a node spawning a binary nobody chose.
+   */
+  readonly resolution: ProviderResolution;
 }
 
 /**
@@ -189,6 +210,7 @@ export function chooseProvider(
       provider: candidate.provider,
       binaryPath: candidate.vendorPath,
       row: { ...row, provider: ProviderIdSchema.parse(row.provider) },
+      resolution: candidate,
     };
   }
   return null;

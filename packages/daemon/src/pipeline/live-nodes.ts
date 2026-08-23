@@ -9,7 +9,19 @@
  * compiled plan sit there. What was missing between them was a `NodePerformer`
  * over a real vendor process, which is this file.
  *
- * Four decisions are load-bearing.
+ * Five decisions are load-bearing.
+ *
+ * **The route is read, never assumed (KAR-23.5).** `chooseProvider` answers
+ * *which provider*; `providerRoutes` answers *which route this machine can
+ * open*, and the second question was simply never asked here. On 2026-08-24 a
+ * fully-installed machine resolved claude with the **shim** route and this
+ * performer spoke ACP JSON-RPC at the plain vendor CLI regardless: the children
+ * never handshook, the ledger went silent, `run.stalled` fired as a false
+ * positive, and — with no `processes` port wired — the kill switch could not
+ * reach them, so three of them outlived the run. Both runners now exist behind
+ * one branch on `providerRoutes`, both are given the `process` row the kill
+ * switch reads, and a route this machine cannot serve is a `NodeFailureError`
+ * before a worktree is provisioned rather than a child nobody can name.
  *
  * **The performer is composed, never a switch.** `byNodeType` routes an `agent`
  * node here and a `gate` node to `gateNodePerformer`, which has existed since
@@ -42,27 +54,60 @@
  * — that is EPIC-07's integration loop, and inventing a second merge here would
  * give a run two answers about how work arrives on the integration branch.
  *
- * Verifies: EPIC-19-S24, EPIC-19-S33 · KAR-19.4 AC1, AC8 · KAR-19.5 AC1
+ * Verifies: EPIC-19-S24, EPIC-19-S33 · KAR-19.4 AC1, AC8 · KAR-19.5 AC1 ·
+ * KAR-23.5
  */
-import type { CapabilityRequirement } from '@DeFlow/adapters';
+import type {
+  CapabilityRequirement,
+  LedgerSink,
+  ProcessRegistry,
+  ScopeAudit,
+  ShimNodeOutcome,
+} from '@DeFlow/adapters';
 import {
   ADAPTER_REQUIREMENT_CAPABILITIES,
+  binaryForRoute,
+  providerRoutes,
   providerSpec,
   runAcpNode,
+  runShimNode,
+  shimCapabilityRow,
   spawnPlan,
+  vendorSessionIdFor,
 } from '@DeFlow/adapters';
-import type { Clock, NodeId, PlanNode, RunId, RunState, StartNode, TaskSpec } from '@DeFlow/core';
-import { buildPacket, NodeFailureError, renderPacket, SchemaIdSchema } from '@DeFlow/core';
+import type {
+  Clock,
+  Handle,
+  NodeId,
+  PlanNode,
+  ProviderRoute,
+  RunId,
+  RunState,
+  SchemaId,
+  StartNode,
+  TaskSpec,
+} from '@DeFlow/core';
+import {
+  buildPacket,
+  NodeFailureError,
+  renderPacket,
+  runSchemaFileName,
+  SchemaIdSchema,
+  WAKE_REASONS,
+} from '@DeFlow/core';
 import type { GateDefinition } from '@DeFlow/gates';
 import { discoverGateDefinitions } from '@DeFlow/gates';
-import { putBlob, readRange } from '@DeFlow/ledger';
+import { putBlob, readRange, scheduleWakeIfChanged } from '@DeFlow/ledger';
 import { Buffer } from 'node:buffer';
 import { createHash } from 'node:crypto';
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import process from 'node:process';
 import { createEffectRunner } from '../effects/durable.ts';
 import { sqliteLedgerSink } from '../exec/ledger-sink.ts';
+import { sqliteProcessRegistry } from '../exec/process-registry.ts';
 import type { ExecContext, NodePerformer } from '../exec/run-executor.ts';
+import { seenShimUuids } from '../exec/shim-replay.ts';
 import { byNodeType, gateNodePerformer } from '../gates/gate-performer.ts';
 import { nodeBranch, runRef, salvageBranch } from '../git/branch-name.ts';
 import { Git } from '../git/git.ts';
@@ -70,8 +115,11 @@ import { worktreePathFor } from '../git/worktree-args.ts';
 import { WorkspaceManager } from '../git/worktree-manager.ts';
 import { log } from '../logging.ts';
 import { buildChildEnv, createRunTmpdir } from '../proc/env.ts';
+import { discoverConnectorServers } from '../providers/connector-servers.ts';
+import { writeRunSchemas } from '../run-schemas.ts';
 import { createScopeAudit } from '../services/scope-diff.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
+import type { Chosen } from './live-chain.ts';
 import { ASSUMED_CONTEXT_FLOOR, chooseProvider, PROVIDER_DEFAULT_MODEL } from './live-chain.ts';
 import type { RunExecution, RunExecutionContext } from './run-execution.ts';
 import { createRunExecution } from './run-execution.ts';
@@ -178,13 +226,229 @@ function requirementsOf(node: PlanNode): readonly CapabilityRequirement[] {
 }
 
 /**
+ * KAR-23.5 — the route this node's attempt will be run down, or `null`.
+ *
+ * ACP wherever it is open, because that is `TURN_ROUTES['node execution']`'s
+ * own answer and the reason for it: streaming, permission negotiation and
+ * cancellation are all session concerns, and a turn driven through a one-shot
+ * CLI invocation has none of them. The shim is the degradation KAR-05.8 built,
+ * not a preference — and, per `shimCapabilityRow`, it serves `read` nodes and
+ * refuses everything above that before a process exists.
+ *
+ * Read off `providerRoutes`, the one reducer `doctor`, `admitRun` and the
+ * picker also read. A second opinion about the same machine is what produced
+ * the 2026-08-24 incident: selection said `shim`, execution assumed `acp`, and
+ * neither was written down anywhere the other could see.
+ */
+function routeFor(chosen: Chosen): ProviderRoute | null {
+  const routes = providerRoutes(chosen.resolution);
+  if (routes.acp === 'available') return 'acp';
+  if (routes.shim === 'available') return 'shim';
+  return null;
+}
+
+/** What both routes share, so the branch below decides a route and not a set
+ * of ports. */
+interface TurnPorts {
+  readonly ledger: LedgerSink;
+  readonly processes: ProcessRegistry;
+  readonly captureEvidence: (evidence: string | Uint8Array) => Handle;
+  readonly scopeAudit: ScopeAudit;
+}
+
+interface ShimTurnInput {
+  readonly options: LiveExecutionOptions;
+  readonly ctx: ExecContext;
+  readonly command: StartNode;
+  readonly chosen: Chosen;
+  /** `binaryForRoute(resolution, 'shim')` — the vendor's own CLI. */
+  readonly binaryPath: string;
+  readonly worktree: string;
+  readonly prompt: string;
+  readonly outputSchemaId: SchemaId | null;
+  readonly env: Readonly<Record<string, string>>;
+  /** `buildChildEnv`'s dropped names, for the vendor's own scrub flag. */
+  readonly scrubbed: readonly string[];
+  readonly ports: TurnPorts;
+}
+
+/**
+ * KAR-23.5 — one node attempt through the vendor's own CLI.
+ *
+ * The runner is `runShimNode`, complete and tested in `@DeFlow/adapters` since
+ * KAR-05.8 and — until this story — imported by no daemon module at all. That
+ * is the entire wiring gap: on a machine whose only open route was the shim,
+ * DeFlow held a finished implementation of what to do and did the other thing.
+ *
+ * Three decisions here are not obvious and are load-bearing.
+ *
+ * **The capability row is the minted shim row, not `chosen.row`.**
+ * `chosen.row` describes the probed ACP bridge; on this path DeFlow is not
+ * mediating anything, and the honest row says so (`mediatedExecution: false`,
+ * `transport: 'exec-shim'`). That is also what makes a `worktree`-level node
+ * refuse here with `safety.permission-unschedulable` **before a process
+ * exists** rather than run at a level DeFlow cannot enforce — the silent
+ * escalation KAR-05.8 AC8 forbids. Passing `chosen.row` instead would turn a
+ * loud refusal into exactly that escalation, so it must not be "fixed" that
+ * way.
+ *
+ * **The session id is derived, per attempt.** `vendorSessionIdFor` with
+ * `ResumeByReplay` keeps the attempt in the tuple, so a retry presents a fresh
+ * uuid — claude's `--session-id` is create-only (KAR-19.13), and a retry that
+ * re-presented the first attempt's id would exit 1 on "already in use".
+ *
+ * **The schema is read before anything is spawned.** `--json-schema` carries
+ * the *document* for claude (KAR-19.11 AC1), the registry decides which of the
+ * path and the document reaches the argv, and an unreadable file has to be a
+ * typed refusal rather than a turn that runs with no contract.
+ *
+ * Deliberately not passed, each a documented absence rather than an invented
+ * value: `authMode`, `compaction`, `costCeilingUsd`, `preflight` and
+ * `transcripts`. The ACP call above carries none of them either; a value made
+ * up here would be recorded as a measurement.
+ */
+async function runShimTurn(input: ShimTurnInput): Promise<ShimNodeOutcome> {
+  const { options, ctx, command, chosen, ports } = input;
+  const runDir = join(options.dataDir, 'runs', ctx.runId);
+  const vendorSha = binarySha256(input.binaryPath);
+
+  if (input.outputSchemaId === null) {
+    throw new NodeFailureError(
+      `${command.node} declares no return contract, so there is nothing to hand the vendor CLI ` +
+        'on its structured-output flag',
+      { reason: 'adapter.capability-missing', class: 'permanent', detail: { node: command.node } },
+    );
+  }
+
+  // Idempotent re-emit: the run's own copy of the contracts, so what the child
+  // is handed and what DeFlow validates against are the same bytes (NF8).
+  const schemasDir = writeRunSchemas(runDir);
+  const schemaPath = join(schemasDir, runSchemaFileName(input.outputSchemaId));
+  let schemaDocument: string;
+  try {
+    schemaDocument = readFileSync(schemaPath, 'utf8');
+  } catch (error) {
+    throw new NodeFailureError(
+      `the schema ${schemaPath} ${command.node} is contracted to return could not be read ` +
+        `(${(error as NodeJS.ErrnoException).code ?? 'unknown'}), so ${chosen.provider} cannot ` +
+        'be told what to return',
+      {
+        reason: 'adapter.capability-missing',
+        class: 'permanent',
+        detail: { node: command.node, schemaPath },
+      },
+    );
+  }
+
+  // The names this machine's vendor CLI is actually connected to. Cached per
+  // daemon life per binary; the pre-execution turns already pass them, and an
+  // execution node that did not would deny every connector call it was
+  // otherwise allowed to make.
+  const connectorServers = await discoverConnectorServers({
+    binaryPath: input.binaryPath,
+    env: input.env,
+  });
+
+  try {
+    return await runShimNode(
+      {
+        runId: ctx.runId,
+        nodeId: command.node,
+        attempt: command.attempt,
+        provider: chosen.row.provider,
+        permission: command.permission,
+        worktree: input.worktree,
+        binary: { path: input.binaryPath, version: chosen.row.version, sha256: vendorSha },
+        prompt: input.prompt,
+        sessionId: vendorSessionIdFor({
+          runId: ctx.runId,
+          nodeId: command.node,
+          attempt: command.attempt,
+          strategy: 'ResumeByReplay',
+        }),
+        outputSchemaId: input.outputSchemaId,
+        schemaPath,
+        schemaDocument,
+        env: { ...input.env },
+        pathScope: [...command.pathScopes.write],
+        sandbox: {
+          // The **detected** version the probed row records, never a default:
+          // a gate compared against an assumed version silently stops applying.
+          version: chosen.row.version,
+          platform: process.platform,
+          roots: options.providerRoots,
+          configDir: join(runDir, 'sandbox', command.node, String(command.attempt)),
+          secretEnvVars: input.scrubbed,
+          connectorServers,
+        },
+      },
+      {
+        clock: ctx.clock,
+        ledger: ports.ledger,
+        processes: ports.processes,
+        captureEvidence: ports.captureEvidence,
+        scopeAudit: ports.scopeAudit,
+        // Minted, not probed — see the note above.
+        capabilityRow: shimCapabilityRow({
+          provider: chosen.row.provider,
+          version: chosen.row.version,
+          binaryPath: input.binaryPath,
+          binarySha256: vendorSha,
+          probedAt: ctx.clock.now(),
+        }),
+        // A provider-side quota limit becomes a durable `node_wake` row, never
+        // a timer (NF9) and never an immediate retry.
+        //
+        // The reason is *found* in `WAKE_REASONS` rather than cast to it: the
+        // adapter port types it as a plain string, and a reason the scheduler
+        // does not recognise would leave the node asleep for ever under a word
+        // nothing wakes on. Unrecognised is a throw, which becomes a
+        // `node.failed` — loud, and in the ledger.
+        wakes: {
+          schedule: (row) => {
+            const reason = WAKE_REASONS.find((known) => known === row.reason);
+            if (reason === undefined) {
+              throw new Error(
+                `${chosen.provider} asked for a node wake with reason "${row.reason}", which no ` +
+                  `scheduler recognises (${WAKE_REASONS.join(', ')}); the node would sleep for ever`,
+              );
+            }
+            scheduleWakeIfChanged(ctx.db, {
+              runId: row.runId,
+              nodeId: row.nodeId,
+              wakeAt: row.wakeAt,
+              reason,
+            });
+            return Promise.resolve();
+          },
+        },
+        // What a crash-replay of this attempt has already made durable, so the
+        // transcript is appended once (KAR-05.8 AC4).
+        seenUuids: seenShimUuids(ctx.db, ctx.runId, command.node, command.attempt),
+      },
+    );
+  } finally {
+    // `runShimNode` writes the row at `node.started` and never clears it —
+    // clearing belongs to whoever knows the attempt is over, which is here, and
+    // only *after* the outcome resolved (the runner observed `exited`).
+    // `runAcpNode` clears its own, which is why this has no ACP counterpart.
+    await ports.processes.clear({
+      runId: ctx.runId,
+      nodeId: command.node,
+      attempt: command.attempt,
+    });
+  }
+}
+
+/**
  * The agent performer: one node attempt, in its own worktree, on a real
  * process.
  *
  * Everything it appends — `node.started`, the `io_chunk` bytes and the event
- * that ends the attempt — is appended by `runAcpNode` through the ledger sink,
- * because only the adapter knows what the turn was. This function's whole job
- * is to decide *where* and *with what*.
+ * that ends the attempt — is appended by the runner (`runAcpNode` or
+ * `runShimNode`) through the ledger sink, because only the adapter knows what
+ * the turn was. This function's whole job is to decide *which route*, *where*
+ * and *with what*.
  */
 function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePerformer {
   return async (command: StartNode, ctx: ExecContext): Promise<void> => {
@@ -212,6 +476,33 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
       throw new NodeFailureError(
         `${chosen.provider} is not in PROVIDER_SPECS, so DeFlow does not know how to invoke it`,
         { reason: 'adapter.capability-missing', class: 'permanent', detail: {} },
+      );
+    }
+
+    // KAR-23.5 — decided **before** the worktree exists, so a machine that can
+    // serve neither route refuses in the ledger without leaving a branch and a
+    // directory behind for an attempt that never spawned anything. A route
+    // this machine cannot open must be a loud `node.failed`, never a child
+    // being spoken to in a protocol it does not answer.
+    const route = routeFor(chosen);
+    const binaryPath = route === null ? null : binaryForRoute(chosen.resolution, route);
+    if (route === null || binaryPath === null) {
+      const routes = providerRoutes(chosen.resolution);
+      throw new NodeFailureError(
+        `${chosen.provider} is installed on this machine but can open neither route for ` +
+          `${command.node} (acp: ${routes.acp} at ${chosen.resolution.adapterBin}, shim: ` +
+          `${routes.shim} at ${chosen.resolution.vendorBin}), so nothing is spawned; ` +
+          "'deflow doctor' reports which binary is missing",
+        {
+          reason: 'adapter.capability-missing',
+          class: 'permanent',
+          detail: {
+            node: command.node,
+            provider: chosen.provider,
+            acp: routes.acp,
+            shim: routes.shim,
+          },
+        },
       );
     }
 
@@ -255,82 +546,120 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
       });
       for (const warning of built.warnings) wiring.warn({ runId: ctx.runId }, warning);
 
-      const { env } = buildChildEnv({
+      const { env, scrubbed } = buildChildEnv({
         base: options.daemonEnv,
         loginPath: options.providerRoots.join(':'),
         tmpdir: await createRunTmpdir(),
       });
 
-      const plan = spawnPlan(spec, {
-        resolved: { provider: spec.id, path: chosen.binaryPath },
-        worktree: provisioned.path,
-      });
+      // The contract the node's own result is filed under. An agent node
+      // always declares one (`AgentNode.returns` is required), so this is
+      // read once here rather than defensively at each call.
+      const outputSchemaId =
+        setting.node.type === 'agent' ? SchemaIdSchema.parse(setting.node.returns.schemaId) : null;
 
-      const outcome = await runAcpNode(
-        {
-          runId: ctx.runId,
-          nodeId: command.node,
-          attempt: command.attempt,
-          provider: chosen.row.provider,
-          permission: command.permission,
-          worktree: provisioned.path,
-          binary: {
-            path: chosen.binaryPath,
-            version: chosen.row.version,
-            sha256: binarySha256(chosen.binaryPath),
-          },
-          argv: plan.argv,
-          env: { ...env, ...plan.env },
-          mcpServers: [],
-          requires: requirementsOf(setting.node),
-          prompt: renderPacket({ segments: built.packet.segments }),
-          pins: built.packet.segments.filter((segment) => segment.pinned),
-          pathScope: [...command.pathScopes.write],
-          // The contract the node's own result is filed under. An agent node
-          // always declares one (`AgentNode.returns` is required), so this is
-          // unconditional rather than defensive.
-          ...(setting.node.type === 'agent'
-            ? { outputSchemaId: SchemaIdSchema.parse(setting.node.returns.schemaId) }
-            : {}),
-        },
-        {
-          clock: ctx.clock,
-          capabilityRow: chosen.row,
-          ledger: sqliteLedgerSink({
-            db: ctx.db,
-            runId: ctx.runId,
-            epoch: ctx.epoch,
-            dataDir: options.dataDir,
-          }),
-          // KAR-08.7 AC3's completion-time backstop, wired rather than
-          // declared. `runAcpNode` refuses a node that declares a path scope
-          // with no auditor behind it — *"a declared scope with nothing behind
-          // it reads exactly like an agent that behaved"* — and every agent
-          // node the planner emits declares one, so this is the difference
-          // between a run that executes and a run that refuses itself.
-          //
-          // No `env` override: DeFlowd passes nothing and the auditor's `git`
-          // gets the user's own configuration, which is the only environment
-          // their repository actually works in (`run-git.ts`).
-          scopeAudit: createScopeAudit(),
-          captureEvidence: (evidence) =>
-            putBlob(
-              options.dataDir,
-              typeof evidence === 'string' ? Buffer.from(evidence, 'utf8') : evidence,
-              'text/plain',
-            ),
-        },
-      );
+      const ledger = sqliteLedgerSink({
+        db: ctx.db,
+        runId: ctx.runId,
+        epoch: ctx.epoch,
+        dataDir: options.dataDir,
+      });
+      // KAR-23.5 — the row `cancelNode`, `killRun` and the boot reaper read.
+      // Passed on **both** routes: without it an execution child is a pid
+      // nothing in the daemon can name, which is why the kill switch answered
+      // `nothing-running` on 2026-08-24 while three vendor children were alive.
+      const processes = sqliteProcessRegistry({
+        db: ctx.db,
+        runId: ctx.runId,
+        epoch: ctx.epoch,
+        dataDir: options.dataDir,
+      });
+      const captureEvidence = (evidence: string | Uint8Array) =>
+        putBlob(
+          options.dataDir,
+          typeof evidence === 'string' ? Buffer.from(evidence, 'utf8') : evidence,
+          'text/plain',
+        );
+      // KAR-08.7 AC3's completion-time backstop, wired rather than declared.
+      // Both runners refuse a node that declares a path scope with no auditor
+      // behind it — *"a declared scope with nothing behind it reads exactly
+      // like an agent that behaved"* — and every agent node the planner emits
+      // declares one, so this is the difference between a run that executes
+      // and a run that refuses itself.
+      //
+      // No `env` override: DeFlowd passes nothing and the auditor's `git` gets
+      // the user's own configuration, which is the only environment their
+      // repository actually works in (`run-git.ts`).
+      const scopeAudit = createScopeAudit();
+      const prompt = renderPacket({ segments: built.packet.segments });
+
+      const outcome =
+        route === 'shim'
+          ? await runShimTurn({
+              options,
+              ctx,
+              command,
+              chosen,
+              binaryPath,
+              worktree: provisioned.path,
+              prompt,
+              outputSchemaId,
+              env,
+              scrubbed,
+              ports: { ledger, processes, captureEvidence, scopeAudit },
+            })
+          : await (async () => {
+              const plan = spawnPlan(spec, {
+                resolved: { provider: spec.id, path: binaryPath },
+                worktree: provisioned.path,
+              });
+              return await runAcpNode(
+                {
+                  runId: ctx.runId,
+                  nodeId: command.node,
+                  attempt: command.attempt,
+                  provider: chosen.row.provider,
+                  permission: command.permission,
+                  worktree: provisioned.path,
+                  // KAR-23.5 — `spec.bin`, the ACP bridge, and not
+                  // `chosen.binaryPath`. The probed row's own `binaryPath` is
+                  // the bridge (the boot probe resolves `spec.bin`), so after
+                  // this the sha on `node.started` finally names the binary the
+                  // row that admitted the node was taken from.
+                  binary: {
+                    path: binaryPath,
+                    version: chosen.row.version,
+                    sha256: binarySha256(binaryPath),
+                  },
+                  argv: plan.argv,
+                  env: { ...env, ...plan.env },
+                  mcpServers: [],
+                  requires: requirementsOf(setting.node),
+                  prompt,
+                  pins: built.packet.segments.filter((segment) => segment.pinned),
+                  pathScope: [...command.pathScopes.write],
+                  ...(outputSchemaId === null ? {} : { outputSchemaId }),
+                },
+                {
+                  clock: ctx.clock,
+                  capabilityRow: chosen.row,
+                  ledger,
+                  processes,
+                  scopeAudit,
+                  captureEvidence,
+                },
+              );
+            })();
 
       if (outcome.status === 'failed') {
         wiring.warn(
-          { runId: ctx.runId, node: command.node, reason: outcome.failure.reason },
-          `${command.node} failed on ${chosen.provider}: ${outcome.failure.message}`,
+          { runId: ctx.runId, node: command.node, route, reason: outcome.failure.reason },
+          `${command.node} failed on ${chosen.provider} (${route}): ${outcome.failure.message}`,
         );
       }
     } finally {
-      // Not swallowed and not a second outcome: `runAcpNode` has already
-      // recorded what happened to the attempt, and a worktree that cannot go
+      // Not swallowed and not a second outcome: the runner has already recorded
+      // what happened to the attempt, and a worktree that cannot go
       // back is a fact about the machine that has to reach the ledger loudly.
       await workspace.remove({
         runId: ctx.runId,
