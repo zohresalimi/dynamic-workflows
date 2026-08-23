@@ -51,6 +51,7 @@ import { type LocationQueryRaw, useRoute, useRouter } from 'vue-router';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
 import { useRunFeed } from '../app/useRunFeed.ts';
 import GraphCanvas from '../components/graph/GraphCanvas.vue';
+import GraphEmptyNote from '../components/graph/GraphEmptyNote.vue';
 import type { NodeBodyVM } from '../components/graph/node-body.ts';
 import PlanNode from '../components/graph/PlanNode.vue';
 import { useRunStore } from '../stores/useRunStore.ts';
@@ -173,18 +174,15 @@ watch(
       </template>
     </GraphCanvas>
 
+    <!--
+      The four sentences moved into `../components/graph/GraphEmptyNote.vue`
+      so the project view's pending strip can say the same ones rather than
+      spelling a second copy of them. Nothing about *when* they appear moved:
+      that is still this view's `nodes.length === 0`, and the placement below
+      is still this view's own.
+    -->
     <p v-if="nodes.length === 0" class="plan-graph__empty">
-      <template v-if="runId === null">
-        No run open. Open one at <code>/runs/&lt;runId&gt;</code>, or start one with
-        <code>deflow run</code>.
-      </template>
-      <template v-else-if="status === 'hydrating'">Reading the run's ledger…</template>
-      <template v-else-if="status === 'reconnecting'">
-        Reconnecting to the daemon. The graph is what this tab last saw.
-      </template>
-      <template v-else>
-        No plan yet. A run's graph appears here as soon as its first plan is compiled.
-      </template>
+      <GraphEmptyNote :run-id="runId" :status="status" />
     </p>
   </section>
 </template>

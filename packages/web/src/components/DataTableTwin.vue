@@ -102,7 +102,7 @@ const cell = (row: Record<string, string>, key: string): string => row[key] ?? '
   border-bottom: 1px solid var(--edge-strong);
   padding: 6px 8px; /* geometry — the head row's own padding */
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--ink-faint);

@@ -205,6 +205,18 @@ suite('EPIC-19-S82 — the run’s own view renders the pending gate (AC6)', () 
       expect(banner?.textContent).toContain(option.label);
     }
     expect(banner?.textContent).toContain(`deflow answer ${RUN} --gate ${SPEC_GATE_NODE}`);
+
+    // The redesign folded the terminal equivalent into a disclosure inside
+    // `../components/gate/GateOptions.vue` — collapsed by default, and *not*
+    // unmounted (`UiDisclosure` pins `unmountOnHide: false`). So the
+    // assertion above still reads it out of `textContent`, which is the
+    // property that assertion has always depended on. This is the same claim
+    // said precisely, so that a future change to `unmountOnHide` fails here
+    // rather than turning the line above into a silent no-op.
+    const command = banner?.querySelector('.gate-options__command');
+    expect(command, 'the command lives inside the disclosure now').not.toBeNull();
+    expect((command as HTMLElement).checkVisibility()).toBe(false);
+    expect(command?.textContent).toContain(`deflow answer ${RUN} --gate ${SPEC_GATE_NODE}`);
   });
 
   it('renders nothing at all when no gate is open', () => {

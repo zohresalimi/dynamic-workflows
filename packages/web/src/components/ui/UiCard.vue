@@ -46,9 +46,18 @@ withDefaults(
   padding: 14px; /* geometry — the raised card's padding, not a type size */
 }
 
+/*
+ * System law 1 — an inset card is layer 2, and layer 2 is a background shift.
+ *
+ * The border came off deliberately: `inset` exists to sit *inside* a `raised`
+ * card, and a bordered box drawn inside a bordered box is the doubled wall the
+ * redesign is removing. `--surface-inset` against `--surface` is the whole of
+ * the depth cue; a caller that needs a rule as well draws one `--edge`
+ * hairline, never a second full outline.
+ */
 .ui-card[data-variant="inset"] {
   background: var(--surface-inset);
-  border: 1px solid var(--edge-strong);
+  border: none;
   border-radius: var(--radius-lg);
   padding: 8px 9px; /* geometry — the inset card's padding */
 }

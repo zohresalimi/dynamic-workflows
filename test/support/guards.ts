@@ -3524,7 +3524,17 @@ export const UI_VARIANT_VOCABULARY: Readonly<Record<string, readonly string[]>> 
     'inset',
     'flush',
   ],
-  size: ['sm', 'md', 'lg'],
+  /*
+   * `xs` was added by the UI redesign, and the addition is the guard working
+   * rather than being worked around. `UiChip` grew a size prop because five
+   * callers were each restyling its padding from outside — which is the same
+   * library-stops-paying-for-itself failure one prop over. What the rule
+   * forbids is a member named after a *screen*; `xs` names what something
+   * looks like, sits at the bottom of a ramp that already had three rungs,
+   * and is a visible edit to this table, which is exactly the cost the guard
+   * is meant to impose.
+   */
+  size: ['xs', 'sm', 'md', 'lg'],
   tone: ['default', 'ok', 'warn', 'error', 'accent'],
 };
 

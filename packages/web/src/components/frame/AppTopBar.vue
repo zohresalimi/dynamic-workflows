@@ -221,6 +221,27 @@ const RUNS_ROUTE_NAMES = new Set<string>([
 
 const WORKFLOWS_ROUTE_NAMES = new Set(['project-workflows', 'project-run']);
 
+/**
+ * Whether the view under this bar draws its own run header.
+ *
+ * The redesign moves the run's task, provider and status into
+ * `../RunHeader.vue` on the project's workflows view — where there is room for
+ * them as a heading and a row of labelled pairs, instead of three things
+ * squeezed between a breadcrumb and a search field. System law 4 then says
+ * they must not *also* be here: a status said twice on one screen is two
+ * things to keep in step, and the first one to go stale is the small one.
+ *
+ * They are hidden rather than deleted, and that is the whole of this
+ * computed's reason to exist. Eight other routes show a run — its plan, its
+ * timeline, its diff, its output — and none of them has a header of its own.
+ * Removing the three mounts outright would take "what was this run asked to
+ * do" off every one of them, which is a feature change wearing a redesign's
+ * clothes (`../../views/composer.test.ts`'s EPIC-22-S27 is the scenario that
+ * says so out loud: the task is readable *afterwards*, from the run's own
+ * ledger, on the run's own view).
+ */
+const runHasHeader = computed<boolean>(() => WORKFLOWS_ROUTE_NAMES.has(String(route.name ?? '')));
+
 /** Which nav item's own name this route lights up — distinct from `name ===
  * item.name` because the Runs and Workflows items each stand for a set of
  * route names, not one. */
@@ -265,9 +286,17 @@ function isActive(itemName: string): boolean {
       </RouterLink>
     </nav>
 
-    <RunProviderBanner />
-    <RunTaskBanner :task="props.task" />
-    <RunStatusPill />
+    <!--
+      System law 4 — a status is said once per surface, and on a route that
+      draws its own run header these three are that header's. See
+      `runHasHeader` in the script for the two route names and for why the bar
+      keeps them everywhere else rather than dropping them outright.
+    -->
+    <template v-if="!runHasHeader">
+      <RunProviderBanner />
+      <RunTaskBanner :task="props.task" />
+      <RunStatusPill />
+    </template>
 
     <button
       class="topbar__theme"

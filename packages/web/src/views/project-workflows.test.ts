@@ -498,6 +498,87 @@ suite('EPIC-22-S43 — switching project leaks no stream, no store and no subscr
   });
 });
 
+/* -------------------------------------------------------------------------- *
+ * The UI redesign: where the run's own facts live, and what the page looks
+ * like before there is a plan to draw.
+ * -------------------------------------------------------------------------- */
+
+suite('the run header carries the facts the topbar used to squeeze in', () => {
+  it('renders the task, the provider pairs and the status pill on this page', async () => {
+    await openProjectA();
+    const run = useRunStore(shell.pinia);
+
+    // The `happy-path-12` recording carries neither `task.submitted` nor
+    // `provider.probed` — it starts at `run.created` — so those two frames are
+    // applied here the way `app/frame.test.ts` applies them for the same two
+    // banners: straight onto the store, which is where the projection reads
+    // them from either way.
+    run.applyEvent(submitted('Migrate the checkout module'));
+    run.applyEvent(probed());
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    // The three used to be mounted in `AppTopBar`; `app/frame.test.ts` still
+    // asserts them there for every route that has no header of its own. Here
+    // they are the header's, and this is the assertion that says so.
+    const header = one('[data-run-header]');
+    expect(header, 'the project view draws a run header').not.toBeNull();
+    expect(header?.querySelector('[data-run-task]')).not.toBeNull();
+    expect(header?.querySelector('[data-run-status-pill]')).not.toBeNull();
+
+    // The task is the projection's, not a string this spec typed.
+    expect(one('[data-run-task]')?.textContent).toContain(run.submittedTask?.summary);
+
+    // The provider facts are labelled pairs now rather than one sentence, so
+    // the values are asserted rather than the wording around them.
+    const meta = one('[data-run-provider]');
+    expect(meta).not.toBeNull();
+    expect(meta?.textContent).toContain('mock');
+    expect(meta?.textContent).toContain('/tmp/deflow-bin/deflow-mock-agent');
+
+    // And the project's own two facts came with it, under the same hooks.
+    expect(one('[data-workspace-project-name]')?.textContent?.trim()).toBe('checkout');
+    expect(header?.textContent).toContain('/repos/checkout');
+  });
+
+  it('does not repeat the run’s status in the topbar on this route', async () => {
+    await openProjectA();
+
+    // System law 4 — said once per surface. The pill is inside the header, and
+    // there is exactly one of it on the page.
+    expect(all('[data-run-status-pill]')).toHaveLength(1);
+    expect(one('.topbar [data-run-status-pill]')).toBeNull();
+    expect(one('.topbar [data-run-task]')).toBeNull();
+  });
+});
+
+suite('a run with no plan yet gets a strip, not an empty split', () => {
+  it('says what is coming, keeps the canvas mounted and draws no board', async () => {
+    // Mounted and left alone: no events are pushed, so the run has no plan and
+    // no gate — the state an operator is in for the first second of every run.
+    await mountWorkspace(`/projects/${PROJECT_A}`, { [PROJECT_A]: [LIVE], [PROJECT_B]: [] });
+    await expect.poll(() => feeds.opened.length, { timeout: 15_000 }).toBeGreaterThan(0);
+
+    await expect
+      .poll(() => one('[data-workspace-pending-plan]'), { timeout: 15_000 })
+      .not.toBeNull();
+    expect(rows()).toHaveLength(0);
+    expect(one('[data-task-board]')).toBeNull();
+
+    // The canvas is still mounted — it owns the run's subscription, and
+    // unmounting it would close the feed that ends the wait. It is collapsed,
+    // not removed.
+    expect(one('.vue-flow')).not.toBeNull();
+    expect(feeds.opened).toHaveLength(1);
+
+    // And the moment a plan arrives the split comes back, with no remount of
+    // the canvas and no second feed.
+    push(happyPath12());
+    await expect.poll(() => rows().length, { timeout: 15_000 }).toBe(12);
+    expect(one('[data-workspace-pending-plan]')).toBeNull();
+    expect(feeds.opened).toHaveLength(1);
+  });
+});
+
 suite('EPIC-22-S46 — the board is bounded', () => {
   it('renders two hundred rows, retains two hundred nodes, and opens one subscription', async () => {
     await mountWorkspace(`/projects/${PROJECT_A}`, { [PROJECT_A]: [LIVE], [PROJECT_B]: [] });
@@ -522,6 +603,54 @@ suite('EPIC-22-S46 — the board is bounded', () => {
 /** The text of one board cell, trimmed. */
 function cell(row: HTMLElement, name: string): string | null {
   return row.querySelector(`[data-board-${name}]`)?.textContent?.trim() ?? null;
+}
+
+/** An envelope `seq` past the recording's head — the two frames below only. */
+function past(offset: number, kind: string, payload: Record<string, unknown>): Event {
+  const head = happyPath12().at(-1)?.seq ?? 0;
+  return {
+    seq: head + offset,
+    runId: HAPPY_PATH_RUN,
+    ts: 1_786_438_900_000 + offset,
+    kind,
+    v: 1,
+    epoch: 1,
+    payload,
+  } as unknown as Event;
+}
+
+/** `task.submitted`, in the shape `../ledger/projections/submission.ts` folds. */
+function submitted(raw: string): Event {
+  return past(900, 'task.submitted', {
+    raw,
+    handle: null,
+    provenance: {
+      kind: 'text',
+      by: 'ui',
+      submittedAt: 1_786_438_900_000,
+      cwd: null,
+      projectId: null,
+    },
+  });
+}
+
+/** `provider.probed`, in the shape `../ledger/projections/provider.ts` folds. */
+function probed(): Event {
+  return past(901, 'provider.probed', {
+    provider: 'mock',
+    admission: 'installed',
+    vendorBin: 'deflow-mock-agent',
+    vendorPath: '/tmp/deflow-bin/deflow-mock-agent',
+    adapterBin: 'deflow-mock-agent',
+    adapterPath: '/tmp/deflow-bin/deflow-mock-agent',
+    package: 'deflow',
+    chosen: {
+      route: 'shim',
+      binaryPath: '/tmp/deflow-bin/deflow-mock-agent',
+      routes: { acp: 'available', shim: 'available' },
+      unserved: [],
+    },
+  });
 }
 
 /** A `node.started` for `node`, `seq` past the recording's head. */

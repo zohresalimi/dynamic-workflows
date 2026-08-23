@@ -48,99 +48,113 @@
  * waiting" would be a sentence about the absence of a fact, and this surface
  * only reports facts.
  *
+ * ## `compact`, and the one thing it must not cost
+ *
+ * The redesign gives the project's workflows view a real gate card
+ * (`./gate/GateDecisionCard.vue`) — the page's one raised object, with the
+ * spec laid out beside the buttons. On *that* route this band would be the
+ * same gate said twice, a hairline strip repeating what a card below it says
+ * in full, which is exactly what system law 4 forbids. So `compact` renders
+ * one line and a link to the card's anchor instead.
+ *
+ * Everywhere else the band is unchanged in substance: the node, every option,
+ * and the terminal equivalent. That is KAR-22.5 AC1's contract — a gate is
+ * answerable *from anywhere*, not only from the run's own screen — and
+ * `compact` is a claim about duplication on one route, never a claim that the
+ * answer path went away. The `<pre>` of the whole rendered spec is the one
+ * thing the full form drops: a band above the router outlet is not where a
+ * 2 KB document is read, and `data-run-gate-prompt` now belongs to the card
+ * that lays it out.
+ *
  * Verifies: EPIC-19-S82, EPIC-22-S58, EPIC-22-S59, EPIC-22-S61, EPIC-22-S62,
  * EPIC-22-S65, EPIC-22-S67 · KAR-19.12 AC6 · KAR-22.5 AC1–AC6, AC8
  */
 import GateOptions from './gate/GateOptions.vue';
 
-const props = defineProps<{
-  readonly runId: string;
-  readonly gate: {
-    readonly node: string;
-    /** What the gate asked, verbatim from `human.requested` (AC3). */
-    readonly prompt?: string;
-    readonly options: readonly { readonly id: string; readonly label: string }[];
-  } | null;
-}>();
-
-/**
- * The command that answers this gate, spelled so it can be selected and pasted.
- *
- * Kept beside the buttons rather than replaced by them: the two surfaces are
- * one answer path (`gateAnswerRequest`), and an operator who is already in a
- * terminal should not have to come here. The **first** option is the one shown,
- * for the reason the terminal's block shows it: a line has to name one, and the
- * gate's own order is §1.3's order.
- */
-const answerCommand = (): string =>
-  props.gate === null
-    ? ''
-    : `deflow answer ${props.runId} --gate ${props.gate.node} --option ${
-        props.gate.options[0]?.id ?? '<option>'
-      }`;
+withDefaults(
+  defineProps<{
+    readonly runId: string;
+    readonly gate: {
+      readonly node: string;
+      /** What the gate asked, verbatim from `human.requested` (AC3). */
+      readonly prompt?: string;
+      readonly options: readonly { readonly id: string; readonly label: string }[];
+    } | null;
+    /** The route below already shows this gate in full — see the header. */
+    readonly compact?: boolean;
+  }>(),
+  { compact: false },
+);
 </script>
 
 <template>
-  <section v-if="gate" class="run-gate" data-run-gate-banner>
-    <p class="run-gate__head">
+  <section
+    v-if="gate"
+    class="run-gate"
+    :class="{ 'run-gate--compact': compact }"
+    data-run-gate-banner
+  >
+    <p v-if="compact" class="run-gate__line">
       <span class="run-gate__node" data-run-gate-node>{{ gate.node }}</span>
       <span class="run-gate__wait">is waiting for you</span>
+      <a class="run-gate__jump" href="#gate-decision">jump to decision</a>
     </p>
 
-    <!--
-      AC3 — what is being asked, in the gate's own words. For the F1.3 gate this
-      is the whole rendered spec, which is why it is a `<pre>` with a scroll of
-      its own rather than a paragraph.
-    -->
-    <pre v-if="gate.prompt" class="run-gate__prompt" data-run-gate-prompt>{{ gate.prompt }}</pre>
+    <template v-else>
+      <p class="run-gate__head">
+        <span class="run-gate__node" data-run-gate-node>{{ gate.node }}</span>
+        <span class="run-gate__wait">is waiting for you</span>
+      </p>
 
-    <GateOptions :run-id="runId" :gate="gate" />
-
-    <p class="run-gate__answer">Or from a terminal: <code>{{ answerCommand() }}</code></p>
+      <GateOptions :run-id="runId" :gate="gate" />
+    </template>
   </section>
 </template>
 
 <style scoped>
+/*
+ * System law 1 — a hairline band on the canvas, not a card. It is the shell's
+ * announcement that something is waiting; the thing you *do* about it is a
+ * raised card, and there is one of those per page.
+ */
 .run-gate {
-  border: 1px solid var(--ink-warn, var(--border, rgb(0 0 0 / 20%)));
-  border-radius: 0.375rem;
-  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--edge);
+  border-left: 3px solid var(--state-awaiting-human); /* geometry — the waiting bar */
+  border-radius: var(--radius-md);
+  padding: 8px 12px; /* geometry — the band's own padding */
   margin: 0;
-  font-size: 0.8125rem;
+  background: var(--surface);
+  font-size: var(--text-md);
   display: grid;
-  gap: 0.375rem;
+  gap: 6px; /* geometry — the band's own stack gap */
 }
 
-.run-gate__head {
+.run-gate--compact {
+  padding: 6px 12px; /* geometry — one line's worth */
+}
+
+.run-gate__head,
+.run-gate__line {
   display: flex;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px; /* geometry — the row's own gutter */
   margin: 0;
 }
 
 .run-gate__node {
-  font-family: var(--font-mono, monospace);
+  font-family: var(--font-mono);
   font-weight: 600;
+  overflow-wrap: anywhere;
 }
 
 .run-gate__wait {
-  color: var(--ink-warn, var(--ink-muted));
-}
-
-.run-gate__prompt {
-  margin: 0;
-  max-height: 14rem;
-  overflow: auto;
-  white-space: pre-wrap;
-  font-family: var(--font-mono, monospace);
-  font-size: 0.95em;
-  background: var(--surface-sunken, transparent);
-  border-radius: 0.25rem;
-  padding: 0.5rem;
-}
-
-.run-gate__answer {
-  margin: 0;
   color: var(--ink-muted);
-  overflow-wrap: anywhere;
+}
+
+.run-gate__jump {
+  margin-left: auto;
+  font-size: var(--text-sm);
+  color: var(--ink-muted);
 }
 </style>

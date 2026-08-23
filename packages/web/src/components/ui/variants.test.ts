@@ -59,10 +59,30 @@ function keywordColour(keyword: string): string {
 }
 
 suite('KAR-24.2 AC6 — UiButton variants resolve to the tokens they claim', () => {
-  it('variant="primary" paints its background from --state-running', async () => {
+  /*
+   * The redesign's system law 3: `--accent` is the primary action and the
+   * active nav item, and nothing else. This assertion used to name
+   * `--state-running`, and it passed for a reason worth writing down — the two
+   * tokens resolve to the same hex in both themes today. That coincidence is
+   * exactly what the law is about: the button was claiming a *run status* as
+   * its colour, and the day the palette moves "running" every primary button
+   * in the application would move with it and nothing would fail. Naming
+   * `--accent` is what makes that a red test instead.
+   */
+  it('variant="primary" paints its background from --accent', async () => {
     const screen = render(UiButton, { props: { variant: 'primary' } });
     const button = screen.container.querySelector('.ui-button') as HTMLElement;
-    expect(getComputedStyle(button).backgroundColor).toBe(tokenColour('--state-running'));
+    expect(getComputedStyle(button).backgroundColor).toBe(tokenColour('--accent'));
+  });
+
+  it('variant="primary" takes its foreground from --accent-ink, not from a guess', async () => {
+    // KAR-25.1 AC4 declared the fill and its ink as a pair so no caller has to
+    // decide what reads on the fill. The button used to write
+    // `--surface-canvas` instead, which is a different token that happened to
+    // be light enough — until the dark canvas dropped to #08090B.
+    const screen = render(UiButton, { props: { variant: 'primary' } });
+    const button = screen.container.querySelector('.ui-button') as HTMLElement;
+    expect(getComputedStyle(button).color).toBe(tokenColour('--accent-ink'));
   });
 
   it('variant="danger" paints its text colour from --state-failed', async () => {
@@ -85,14 +105,58 @@ suite('KAR-24.2 AC6 — UiCard variants resolve to the tokens they claim', () =>
     expect(getComputedStyle(card).backgroundColor).toBe(tokenColour('--surface-inset'));
   });
 
+  it('variant="inset" draws no border — depth is the surface shift alone', async () => {
+    // System law 1. `inset` exists to sit inside a `raised` card, and the two
+    // borders together were the doubled wall the redesign removes.
+    const screen = render(UiCard, { props: { variant: 'inset' } });
+    const card = screen.container.querySelector('.ui-card') as HTMLElement;
+    expect(getComputedStyle(card).borderTopStyle).toBe('none');
+  });
+
   it('variant="raised" paints its background from --surface', async () => {
     const screen = render(UiCard, { props: { variant: 'raised' } });
     const card = screen.container.querySelector('.ui-card') as HTMLElement;
     expect(getComputedStyle(card).backgroundColor).toBe(tokenColour('--surface'));
   });
+
+  it('variant="raised" keeps its border — it is the page’s raised object', async () => {
+    const screen = render(UiCard, { props: { variant: 'raised' } });
+    const card = screen.container.querySelector('.ui-card') as HTMLElement;
+    expect(getComputedStyle(card).borderTopStyle).toBe('solid');
+  });
 });
 
 suite('KAR-24.2 AC6 — UiChip variants resolve to the tokens they claim', () => {
+  it('variant="accent" paints its text colour from --accent', async () => {
+    // Same law, same coincidence as `UiButton`'s primary above: this variant
+    // named `--state-running`, which meant "the emphasised chip" and "the
+    // running chip" were one declaration apart from diverging silently.
+    const screen = render(UiChip, { props: { variant: 'accent' } });
+    const chip = screen.container.querySelector('.ui-chip') as HTMLElement;
+    expect(getComputedStyle(chip).color).toBe(tokenColour('--accent'));
+  });
+
+  it('variant="neutral" carries no border — it is a chip inside a card', async () => {
+    // System law 1: a bordered box inside a bordered box is the doubled wall
+    // the redesign removes, and the neutral chip is almost always inside one.
+    const screen = render(UiChip, { props: { variant: 'neutral' } });
+    const chip = screen.container.querySelector('.ui-chip') as HTMLElement;
+    expect(getComputedStyle(chip).borderTopStyle).toBe('none');
+  });
+
+  it('size="xs" is tighter than the default, and both are real paddings', async () => {
+    // The prop exists so callers stop restyling padding from outside; if the
+    // two rungs were the same value that reason would have evaporated.
+    const small = render(UiChip, { props: { size: 'xs' } });
+    const regular = render(UiChip, { props: { size: 'sm' } });
+    const pad = (screen: { container: Element }): number =>
+      Number.parseFloat(
+        getComputedStyle(screen.container.querySelector('.ui-chip') as HTMLElement).paddingLeft,
+      );
+    expect(pad(small)).toBeGreaterThan(0);
+    expect(pad(small)).toBeLessThan(pad(regular));
+  });
+
   it('variant="ok" paints its text colour from --state-passed', async () => {
     const screen = render(UiChip, { props: { variant: 'ok' } });
     const chip = screen.container.querySelector('.ui-chip') as HTMLElement;

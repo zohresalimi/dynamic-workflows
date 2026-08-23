@@ -293,7 +293,7 @@ const cardStyle = computed(() => ({
   align-items: center;
   gap: 0.2rem;
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   color: var(--state-running);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -318,7 +318,7 @@ const cardStyle = computed(() => ({
   padding: 0.05em 0.4em;
   border: 1px solid currentcolor;
   border-radius: 999px;
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -362,7 +362,7 @@ const cardStyle = computed(() => ({
   gap: 0.25rem;
   margin: 0;
   padding: 6px 10px 0; /* geometry — the body's own side padding */
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   color: var(--ink-muted);
   white-space: nowrap;
   overflow: hidden;
