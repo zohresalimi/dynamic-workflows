@@ -74,6 +74,8 @@ interface DrawnNode {
   readonly border: string;
   /** The palette's value for that state, resolved in the same document. */
   readonly palette: string;
+  /** `--state-<state>` exactly as the stylesheet declares it, for the message. */
+  readonly declared: string;
   readonly label: string;
   readonly glyphs: number;
   readonly text: string;
@@ -87,21 +89,52 @@ interface DrawnNode {
  * queries: what is being asserted is a *whole picture at one instant*, and a
  * dozen round trips would sample a graph that is still streaming.
  */
-const DRAWN = `Array.from(document.querySelectorAll('[data-plan-node]')).map((body) => {
-  const shell = body.closest('.vue-flow__node');
-  const state = body.dataset.state;
-  return {
-    id: body.dataset.planNode,
-    state,
-    border: getComputedStyle(body).borderColor,
-    palette: getComputedStyle(document.documentElement)
-      .getPropertyValue('--state-' + state).trim(),
-    label: body.querySelector('[data-slot="label"]')?.textContent?.trim() ?? '',
-    glyphs: body.querySelectorAll('svg').length,
-    text: body.textContent.replace(/\\s+/g, ' ').trim(),
-    ariaLabel: shell?.getAttribute('aria-label') ?? '',
+const DRAWN = `(() => {
+  // Both sides of the colour assertion have to be read the way the *browser*
+  // sees them, not the way the stylesheet spells them.
+  //
+  // \`getComputedStyle(el).borderColor\` is always a resolved colour; a custom
+  // property read with \`getPropertyValue\` is the declared token, verbatim.
+  // Those two agreed by luck for as long as the palette was written in
+  // \`oklch()\` — Chromium round-trips that form unchanged — and stopped
+  // agreeing the moment KAR-24.1 rewrote the token layer in hex, at which
+  // point \`#12694a\` was compared against \`rgb(18, 105, 74)\`: the same colour,
+  // spelled two ways, and every node in this drawing red for it.
+  //
+  // So the token is resolved through a probe that asks the same engine to
+  // compute \`var(--state-<state>)\` as a colour. Both values then arrive in one
+  // serialisation and the assertion is about the colour again, which is what
+  // it always meant. The declared text is carried alongside, unresolved, so a
+  // failure still names the token an operator would go and look at.
+  const probe = document.createElement('span');
+  probe.style.display = 'none';
+  document.documentElement.append(probe);
+  const resolve = (token) => {
+    probe.style.color = '';
+    probe.style.color = 'var(' + token + ')';
+    return getComputedStyle(probe).color;
   };
-})`;
+  try {
+    return Array.from(document.querySelectorAll('[data-plan-node]')).map((body) => {
+      const shell = body.closest('.vue-flow__node');
+      const state = body.dataset.state;
+      return {
+        id: body.dataset.planNode,
+        state,
+        border: getComputedStyle(body).borderColor,
+        palette: resolve('--state-' + state),
+        declared: getComputedStyle(document.documentElement)
+          .getPropertyValue('--state-' + state).trim(),
+        label: body.querySelector('[data-slot="label"]')?.textContent?.trim() ?? '',
+        glyphs: body.querySelectorAll('svg').length,
+        text: body.textContent.replace(/\\s+/g, ' ').trim(),
+        ariaLabel: shell?.getAttribute('aria-label') ?? '',
+      };
+    });
+  } finally {
+    probe.remove();
+  }
+})()`;
 
 let browser: Browser;
 let harness: ReplayHarness;
@@ -179,13 +212,17 @@ suite('EPIC-17-S1 — opening a completed run draws all of it', () => {
 
   it('paints each one in its own state colour, through the palette', () => {
     for (const node of drawn) {
-      expect(node.palette, `--state-${node.state} resolved to nothing`).not.toBe('');
+      expect(node.declared, `--state-${node.state} resolved to nothing`).not.toBe('');
+      expect(node.palette, `--state-${node.state} is not a colour`).not.toBe('');
       // The colour on screen *is* the custom property's value — not a literal
       // that happens to look like it, which is what a component computing its
       // own colour would produce and what dark mode would then not change.
-      expect(node.border, `${node.id} is not painted with --state-${node.state}`).toBe(
-        node.palette,
-      );
+      // Both sides are the browser's own resolved form; see `DRAWN` for why
+      // comparing against the declared text was a comparison of spellings.
+      expect(
+        node.border,
+        `${node.id} is not painted with --state-${node.state} (declared ${node.declared})`,
+      ).toBe(node.palette);
     }
     // Seven states, seven colours: a graph that resolved every state to the
     // same variable would satisfy every assertion above.
