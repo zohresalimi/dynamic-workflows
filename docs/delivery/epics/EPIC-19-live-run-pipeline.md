@@ -169,6 +169,15 @@ wording.
   both of which exist and both of which already reduce correctly. Widening the `Event` union is
   [EPIC-02](./EPIC-02-domain-model.md)'s, and doing it from here would be a schema change made in
   the wrong file.
+  **Amended 2026-08-23.** KAR-19.13 needs one kind that did not exist — `provider.session_opened`,
+  whose rows *are* the count that gives a pre-execution turn its attempt — and on 2026-08-22 it was
+  widened into the union from this branch, with [04 §9](../../04-domain-model.md#9-the-event-union)
+  edited from here too: exactly the schema change in the wrong file this rule names. The rule is not
+  relaxed and this is not a second named exception. The kind, its `parseEvent` rule, its §9 row and
+  its unit tests are [KAR-02.11](./EPIC-02-domain-model.md), a story in the epic that owns the union,
+  added under [README §9](../README.md#9-changing-the-plan); KAR-19.13 **depends on** it. Any further
+  kind this epic turns out to need goes the same way — a story in EPIC-02 first, cited here — and no
+  kind is added from this branch without one.
 - **Replacing the replay harness.** [KAR-16.5](./EPIC-16-ui-foundation.md) stays exactly as it is
   and stays the UI's development loop. KAR-19.5 adds the level that was missing above it; it removes
   nothing.
@@ -1968,7 +1977,7 @@ never *stuck*, not that answering is pleasant.
 | **Status**      | Not started                                                                                                                                                                                                                                                                                                                              |
 | **Priority**    | P0                                                                                                                                                                                                                                                                                                                                       |
 | **Size**        | S                                                                                                                                                                                                                                                                                                                                        |
-| **Depends on**  | KAR-19.8 (`vendorSessionId`, `vendorSessionIdFor` and its `ResumeByReplay` rule — *"the attempt stays in the tuple"* — which this story is the application of, plus the argument-refusal reporting it extends), KAR-19.11 (`PROVIDER_SPECS`' declared argument forms and the fake vendor binaries that enforce them), KAR-19.3 (`live-chain.ts`'s `sessionFor` and `live-agents.ts`'s `structuredTurn`, the two functions this changes), KAR-19.9 (the bound and the classified retry this must not have to lean on), EPIC-05 KAR-05.5 (`ResumeNative` / `ResumeByReplay`, the strategies the derivation switches on), KAR-05.8 (the exec-shim adapter), EPIC-10 KAR-10.2 (`FramingSession.repair`, the replay path that opens a second process), EPIC-02 KAR-02.10 (the closed failure taxonomy this classifies into) |
+| **Depends on**  | EPIC-02 [KAR-02.11](./EPIC-02-domain-model.md) (`provider.session_opened` and its envelope rule — the kind whose rows AC1 counts, owned and tested in the epic that owns the `Event` union), KAR-19.8 (`vendorSessionId`, `vendorSessionIdFor` and its `ResumeByReplay` rule — *"the attempt stays in the tuple"* — which this story is the application of, plus the argument-refusal reporting it extends), KAR-19.11 (`PROVIDER_SPECS`' declared argument forms and the fake vendor binaries that enforce them), KAR-19.3 (`live-chain.ts`'s `sessionFor` and `live-agents.ts`'s `structuredTurn`, the two functions this changes), KAR-19.9 (the bound and the classified retry this must not have to lean on), EPIC-05 KAR-05.5 (`ResumeNative` / `ResumeByReplay`, the strategies the derivation switches on), KAR-05.8 (the exec-shim adapter), EPIC-10 KAR-10.2 (`FramingSession.repair`, the replay path that opens a second process), EPIC-02 KAR-02.10 (the closed failure taxonomy this classifies into) |
 | **PRD**         | F1.2, F3.2, F3.4, F4.3, NF8, NF9, NF10                                                                                                                                                                                                                                                                                                   |
 | **Verified by** | EPIC-19-S84, EPIC-19-S85, EPIC-19-S86, EPIC-19-S87, EPIC-19-S88, EPIC-19-S89, EPIC-19-S90                                                                                                                                                                                                                                                 |
 
@@ -2023,6 +2032,16 @@ makes the vendor happy and makes every transcript under the vendor's projects di
 from the ledger, which is the quiet half of the 2026-08-13 bug and is not allowed to come back. And
 `ResumeNative` stays pinned to attempt 0, because there the second attempt genuinely is resuming the
 first's session (KAR-19.8 AC4).
+
+**The kind AC1 counts is not this epic's to add** _(recorded 2026-08-23)_. AC1 needs the attempt to
+be a fact in the ledger, and the durable form of that is rows of an event kind — `provider.session_opened`,
+which did not exist. This epic's Out-of-scope forbids widening the `Event` union from here, and the
+first implementation of this story did it anyway. The kind, its schema, its `parseEvent` rule and its
+§9 documentation are [KAR-02.11](./EPIC-02-domain-model.md), added under
+[README §9](../README.md#9-changing-the-plan) in the epic that owns the union; this story consumes
+it and is listed in its `Depends on` above. What stays here is what this epic's diff is allowed to
+be: the count read at the call site, the attempt threaded into `sessionFor`, the row appended before
+the spawn, and the refusal vocabulary.
 
 **Acceptance criteria**
 

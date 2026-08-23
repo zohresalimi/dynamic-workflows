@@ -97,6 +97,75 @@ export type Event = {
   [K in EventKind]: EventEnvelope<K, EventPayloadOf<K>>;
 }[EventKind];
 
+/** The envelope fields a payload is allowed to restate. Both are optional on
+ * the envelope for every kind that declares no echo, and neither may be absent
+ * for a kind that declares one. */
+type EnvelopeScope = 'nodeId' | 'attempt';
+
+/**
+ * KAR-02.11 — the payload keys that restate an envelope field, per kind.
+ *
+ * Most payloads say nothing the envelope already says. A few must: a kind whose
+ * rows are *counted* is counted with `WHERE node_id = ?` over the ledger's
+ * indexed column, so its `nodeId` cannot be optional, while the payload still
+ * has to name the node it is about to stay readable on its own. Those are two
+ * writes of one fact, and until this table existed nothing checked they agreed.
+ *
+ * The defect that produced it: `provider.session_opened`'s rows are the attempt
+ * a pre-execution turn derives its vendor session from (KAR-19.13). An event
+ * written without an envelope `nodeId` counts zero for ever, so the next turn
+ * re-derives the id the vendor has already created and is refused with
+ * `Session ID … is already in use` — which is how a run wedged at plan
+ * compilation on 2026-08-16. A row whose envelope says `planner` and whose
+ * payload says `framing` is worse still: the count sees one turn and the offline
+ * recomputation of the id sees another.
+ *
+ * A table rather than an `if` for one kind, so the next counted kind declares
+ * itself and inherits the rule. A kind absent from it is parsed exactly as it
+ * was before this existed.
+ */
+export const EVENT_ENVELOPE_ECHOES = {
+  'provider.session_opened': { node: 'nodeId', attempt: 'attempt' },
+} as const satisfies Partial<Readonly<Record<EventKind, Readonly<Record<string, EnvelopeScope>>>>>;
+
+const ENVELOPE_ECHOES: Partial<Readonly<Record<string, Readonly<Record<string, EnvelopeScope>>>>> =
+  EVENT_ENVELOPE_ECHOES;
+
+/**
+ * The disagreements between one payload and its envelope, as issue strings in
+ * `issuesOf`'s shape. Empty means they agree.
+ *
+ * Both values are printed. "does not match" without them sends the reader back
+ * to the ledger to find out what did not match what.
+ */
+function echoIssues(
+  echoes: Readonly<Record<string, EnvelopeScope>>,
+  envelope: { nodeId?: NodeId | undefined; attempt?: number | undefined },
+  payload: unknown,
+): string[] {
+  const fields = (payload ?? {}) as Record<string, unknown>;
+  const issues: string[] = [];
+
+  for (const [payloadKey, envelopeField] of Object.entries(echoes)) {
+    const onEnvelope: unknown = envelope[envelopeField];
+    const inPayload = fields[payloadKey];
+
+    if (onEnvelope === undefined) {
+      issues.push(
+        `${payloadKey}: the envelope has no ${envelopeField}, so this event cannot be counted under one (the payload says ${JSON.stringify(inPayload)})`,
+      );
+      continue;
+    }
+    if (onEnvelope !== inPayload) {
+      issues.push(
+        `${payloadKey}: does not match the envelope's ${envelopeField} (payload ${JSON.stringify(inPayload)}, envelope ${JSON.stringify(onEnvelope)})`,
+      );
+    }
+  }
+
+  return issues;
+}
+
 export type ParseEventResult =
   | { status: 'ok'; event: Event }
   /** §9.2 rule 2. The reducer returns `state` unchanged for this. */
@@ -163,6 +232,18 @@ export function parseEvent(
   const parsed = EVENT_SCHEMAS[kind].payload.safeParse(atCurrent);
   if (!parsed.success) {
     return { status: 'invalid-payload', kind, v, seq: rest.seq, issues: issuesOf(parsed.error) };
+  }
+
+  // KAR-02.11 — last, and only for the kinds that declare an echo. Both
+  // forward-compatibility branches above are decided before this runs, so a
+  // downgraded daemon still reports "newer than me" rather than a mismatch it
+  // is in no position to judge.
+  const echoes = ENVELOPE_ECHOES[kind];
+  if (echoes !== undefined) {
+    const mismatched = echoIssues(echoes, rest, parsed.data);
+    if (mismatched.length > 0) {
+      return { status: 'invalid-payload', kind, v, seq: rest.seq, issues: mismatched };
+    }
   }
 
   // The cast is the one place the kind→payload correspondence is asserted

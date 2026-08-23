@@ -181,7 +181,7 @@ export const EVENT_KIND_OWNERS = {
   // A stall with an external cause, so it can be told apart from one the run
   // caused itself (KAR-17.8 AC6).
   'provider.rate_limited': ['cost', 'timeline'],
-  // KAR-19.13 — claimed by nothing, and that is the answer rather than a gap.
+  // KAR-02.11 AC7 — claimed by nothing, and that is the answer rather than a gap.
   // The vendor session a pre-execution turn opened exists so the *next* turn's
   // derivation can count it and so a past turn's id can be recomputed offline;
   // no surface renders it, and every screen still names the run by DeFlow's own

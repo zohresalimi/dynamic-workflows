@@ -64,6 +64,8 @@ functions, so it is the cheapest and fastest part of the suite and should stay t
 | EPIC-02-S26 | A vendor CLI consumes an emitted schema file directly                    | KAR-02.8            | Contract          |
 | EPIC-02-S27 | A thrown `Error` never reaches the ledger                                | KAR-02.10           | Failure           |
 | EPIC-02-S28 | Failure class is assigned at construction, not derived at render         | KAR-02.10           | Edge case         |
+| EPIC-02-S29 | A counted event cannot be recorded where no count can see it             | KAR-02.11           | Failure           |
+| EPIC-02-S30 | The envelope and the payload cannot disagree about which turn this was   | KAR-02.11, KAR-02.7 | Edge case         |
 
 ---
 
@@ -1115,6 +1117,113 @@ probe cannot determine whether a mutating effect landed — retrying might doubl
 might drop the work, and neither is detectable. Making the type refuse `transient` means nobody can
 "helpfully" add a retry later. Budget ceilings are `gate` for the same structural reason: F4.6
 pauses for a human decision rather than dying with hours of work half-done.
+
+---
+
+## EPIC-02-S29 — A counted event cannot be recorded where no count can see it
+
+**Verifies:** KAR-02.11 · **Type:** Failure · **Automated at:** unit
+
+```gherkin
+Feature: provider.session_opened is counted, so it must be countable
+
+  Background:
+    Given "provider.session_opened" is a registered kind at v1
+    And its payload is { node, attempt, provider, session: { id, origin } }
+    And the count of its rows for a (run, node) is the attempt the next turn's session id is derived from
+
+  Scenario: an event with no node on its envelope is refused
+    Given a well-formed provider.session_opened payload for node "planner", attempt 0
+    And an envelope carrying no nodeId
+    When parseEvent is called
+    Then the status is "invalid-payload"
+    And an issue names "node"
+    And the message says the envelope has no nodeId to count this event under
+
+  Scenario: the well-formed event parses
+    Given the same payload
+    And an envelope whose nodeId is "planner" and whose attempt is 0
+    When parseEvent is called
+    Then the status is "ok"
+    And event.nodeId is "planner"
+    And event.payload.attempt is 0
+
+  Scenario Outline: the payload's own shape is strict
+    Given a provider.session_opened payload with <mutation>
+    When parseEvent is called on an otherwise well-formed envelope
+    Then the status is "invalid-payload"
+
+    Examples:
+      | mutation                          |
+      | an extra key "sessionId"          |
+      | no "attempt" field                |
+      | attempt: -1                       |
+      | attempt: "1"                      |
+      | session.id: ""                    |
+      | session.origin: "resumed"         |
+
+  Scenario: an older build has never heard of the kind
+    Given a build whose union does not contain provider.session_opened
+    When it parses one out of the ledger
+    Then the status is "unknown-kind"
+    And nothing about envelopes or payloads was inspected first
+```
+
+**Notes:** This is the 2026-08-16 wedge stated at the level it can be prevented at. The attempt a
+pre-execution turn derives its vendor session from is `count(provider.session_opened)` for that
+`(run, node)`, and that count is a `WHERE node_id = ?` over an indexed column — so an event written
+without a `nodeId` on its envelope counts zero for ever, the next turn re-derives the id the vendor
+already created, and `claude` refuses it with `Session ID … is already in use`. The envelope's
+`nodeId` is optional for good reasons everywhere else (`run.created` belongs to no node); it is
+required here because this kind's whole purpose is to be counted under one. The last scenario is the
+forward-compatibility order from [EPIC-02-S19](#epic-02-s19--an-older-build-meets-an-event-kind-it-has-never-heard-of),
+restated for the new kind: adding a kind must never make an older daemon call a ledger corrupt.
+
+---
+
+## EPIC-02-S30 — The envelope and the payload cannot disagree about which turn this was
+
+**Verifies:** KAR-02.11, KAR-02.7 · **Type:** Edge case · **Automated at:** unit
+
+```gherkin
+Feature: A payload that restates an envelope field must restate it correctly
+
+  Scenario Outline: a disagreement is a parse failure, not a silent choice
+    Given an envelope with nodeId "<nodeId>" and attempt <attempt>
+    And a provider.session_opened payload with node "<node>" and attempt <payloadAttempt>
+    When parseEvent is called
+    Then the status is "<status>"
+    And when it fails the issue names the field and both values
+
+    Examples:
+      | nodeId  | attempt | node    | payloadAttempt | status          |
+      | planner | 0       | planner | 0              | ok              |
+      | planner | 2       | planner | 2              | ok              |
+      | planner | 0       | framing | 0              | invalid-payload |
+      | planner | 1       | planner | 0              | invalid-payload |
+      | planner |         | planner | 0              | invalid-payload |
+
+  Scenario: the rule is a table, not a special case
+    Given the exported table of payload keys that echo an envelope field
+    Then every entry names a registered kind and an envelope field that exists
+    And for every entry a matching envelope parses and a mismatched one does not
+    And a kind absent from the table is parsed exactly as it was before this rule existed
+
+  Scenario: the order of the checks is unchanged
+    Given a provider.session_opened envelope at v2 while this build writes v1
+    When parseEvent is called
+    Then the status is "future-version"
+    And no echo was compared, because the payload was never parsed
+```
+
+**Notes:** The two fields are written by different lines of one call — `nodeId` onto the envelope so
+the ledger indexes it, `node` into the payload so the row is self-describing — and until this rule
+existed nothing checked they agreed. A row that says `planner` on the envelope and `framing` in the
+payload is worse than either alone: the count sees one turn, the offline recomputation of
+`vendorSessionId(runId, node, attempt)` sees another, and the two disagree about a value that has
+already been spent at a vendor. The table exists so the check is not one `if` for one kind: the next
+event whose payload restates its envelope declares it and inherits the rule, and every kind that
+declares nothing parses exactly as before.
 
 ---
 

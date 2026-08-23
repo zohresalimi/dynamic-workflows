@@ -960,7 +960,7 @@ function project(state: RunState, event: Event): Transition {
     // outcome of F5.9's redaction pass and belongs to the export, not the run.
     case 'provider.probed':
     case 'provider.rate_limited':
-    // KAR-19.13 — the vendor session a pre-execution turn opened is a record,
+    // KAR-02.11 AC7 — the vendor session a pre-execution turn opened is a record,
     // not a state change: it exists to be *counted* by the next turn's
     // derivation and to be recomputed offline. A `running` node here would be
     // a `framing` node nothing ever completes.

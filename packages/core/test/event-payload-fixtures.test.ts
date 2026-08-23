@@ -19,7 +19,7 @@ import { expect, it, describe as suite } from 'vitest';
 import type { EventKind } from '../src/event-payloads.ts';
 import { EVENT_KINDS, EVENT_SCHEMAS } from '../src/event-payloads.ts';
 import { parseEvent } from '../src/events.ts';
-import { PAYLOADS, RUN_ID } from './support/event-payloads.fixture.ts';
+import { envelopeEchoes, PAYLOADS, RUN_ID } from './support/event-payloads.fixture.ts';
 
 const envelope = (kind: EventKind, payload: unknown): Record<string, unknown> => ({
   seq: 1,
@@ -28,6 +28,10 @@ const envelope = (kind: EventKind, payload: unknown): Record<string, unknown> =>
   kind,
   v: EVENT_SCHEMAS[kind].v,
   epoch: 1,
+  // KAR-02.11 — a kind that declares an echo is not a well-formed event without
+  // the envelope fields its payload restates. The rule itself is asserted in
+  // ./envelope-echo.test.ts; here it is only obeyed.
+  ...envelopeEchoes(kind),
   payload,
 });
 

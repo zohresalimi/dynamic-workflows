@@ -2112,7 +2112,7 @@ export const ProviderRateLimitedSchema = z.strictObject({
 });
 
 /**
- * KAR-19.13 AC1, AC2 — the vendor session DeFlow opened for one turn of a
+ * KAR-02.11 AC1, for KAR-19.13 — the vendor session DeFlow opened for one turn of a
  * pre-execution node, journaled **before** the child is spawned.
  *
  * The record exists because the *attempt* has to be a fact in the ledger rather

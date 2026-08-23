@@ -65,7 +65,17 @@ export const PRE_EXECUTION_NODES = {
   planner: NodeIdSchema.parse('planner'),
 } as const satisfies Readonly<Record<string, NodeId>>;
 
-/** The event kind whose rows *are* the count. Named once. */
+/**
+ * The event kind whose rows *are* the count. Named once.
+ *
+ * The kind itself belongs to the epic that owns the `Event` union and is
+ * KAR-02.11 there, not here — this epic's Out-of-scope is explicit that
+ * widening the union from this branch would be a schema change made in the
+ * wrong file. Its envelope rule is the reason `appendEvents` below is handed a
+ * `nodeId` and an `attempt` as well as a payload that restates them: the count
+ * is a `WHERE node_id = ?` over a column, so an event without one counts zero
+ * for ever, and `parseEvent` refuses the pair when they disagree.
+ */
 export const PRE_EXECUTION_SESSION_KIND = 'provider.session_opened';
 
 /**
