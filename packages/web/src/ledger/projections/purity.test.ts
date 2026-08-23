@@ -59,6 +59,12 @@ suite('EPIC-16-S15 — the purity rule is enforced, not documented (AC1)', () =>
       'gates.ts',
       'index.ts',
       'kinds.ts',
+      // KAR-27.3's tenth: which pre-execution turn is in flight. It folds
+      // `@DeFlow/core`'s own vocabulary rather than a browser copy of it, and
+      // the purity rule is what stops it reaching for the turn's *output* —
+      // which is `io_chunk`, the data plane, and belongs to the component that
+      // polls it.
+      'liveTurn.ts',
       // KAR-17.9's aggregation. A pure *selector* over a folded blackboard
       // rather than an eighth projection — it folds no events — but it lives
       // here for the same reason the seven do, and the same rule applies to it.

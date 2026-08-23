@@ -84,6 +84,9 @@ import {
   type EscalationVM,
   type GatesProjection,
   gatesProjection,
+  type LiveTurnProjection,
+  liveTurnOf,
+  liveTurnProjection,
   type PlanHistoryProjection,
   type PlanProjection,
   PROJECTIONS,
@@ -175,6 +178,8 @@ export const useRunStore = defineStore('run', () => {
   const provider = shallowRef<ProviderProjection>(providerProjection.create());
   // KAR-22.2 AC6 — what this run was asked to do, for the run header.
   const submission = shallowRef<SubmissionProjection>(submissionProjection.create());
+  // KAR-27.3 AC3 — which pre-execution turn is in flight, for the activity strip.
+  const liveTurn = shallowRef<LiveTurnProjection>(liveTurnProjection.create());
 
   /**
    * The same nine, keyed by name for the paths that treat them uniformly —
@@ -197,6 +202,7 @@ export const useRunStore = defineStore('run', () => {
     timeline,
     provider,
     submission,
+    liveTurn,
   } as unknown as Record<ProjectionName, ShallowRef<unknown>>;
 
   const modules = {
@@ -209,6 +215,7 @@ export const useRunStore = defineStore('run', () => {
     timeline: timelineProjection,
     provider: providerProjection,
     submission: submissionProjection,
+    liveTurn: liveTurnProjection,
   } as unknown as Record<ProjectionName, ProjectionModule<unknown>>;
 
   /** One integer per projection. The whole of this store's change detection. */
@@ -552,6 +559,18 @@ export const useRunStore = defineStore('run', () => {
     return submission.value.task;
   });
 
+  /**
+   * KAR-27.3 AC3 — the pre-execution turn this run has in flight, or `null`.
+   *
+   * The answer, not the record: which of the three turns is running is the
+   * question every caller asks, and three callers each scanning the record
+   * would be three chances to disagree about "in flight".
+   */
+  const liveTurnInFlight = computed(() => {
+    void versions.liveTurn.value;
+    return liveTurnOf(liveTurn.value);
+  });
+
   /** `nodeId` → its four figures. Which one to show is the renderer's choice. */
   const nodeSpend = computed<ReadonlyMap<string, CostFigures>>(() => {
     void versions.cost.value;
@@ -620,6 +639,7 @@ export const useRunStore = defineStore('run', () => {
     timeline,
     provider,
     submission,
+    liveTurn,
 
     // change detection
     version: (name: ProjectionName): number => versions[name].value,
@@ -636,6 +656,7 @@ export const useRunStore = defineStore('run', () => {
     nodeSpend,
     openGate,
     submittedTask,
+    liveTurnInFlight,
 
     // lifecycle
     open,
