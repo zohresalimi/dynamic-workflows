@@ -224,7 +224,17 @@ export async function buildFramingPinnedSegments(
     safetyConstraintsText(orderPinnedConstraints(input.constraints)),
     `Permission level (pinned): ${input.permission}\n` +
       'You may read this repository and you may ask the operator a clarifying question. ' +
-      'You may not write a file and you may not run a command that changes one.',
+      'You may not write a file and you may not run a command that changes one.\n' +
+      // The 2026-08-23 defect, stated where the agent reads it: a headless
+      // tool denial was recorded in a spec as "Operator declined the Linear
+      // list_issues call" when no operator had been asked anything, and the
+      // spec then framed a story the tracker had already closed.
+      'Connected tools (issue trackers, code hosts, and any other server this machine is ' +
+      'connected to) are governed by DeFlow policy: non-destructive reads are pre-authorized, ' +
+      'and a denied tool call is a policy or environment fact, never an operator decision — ' +
+      'no one was asked, so never describe a denial as the operator declining. Consult ' +
+      'connected trackers directly while you frame: looking something up is part of this ' +
+      'interrogation, not a step to put in a plan or behind an approval.',
   ];
 
   return [

@@ -1,0 +1,141 @@
+# EPIC-27: Operational controls — pause a run for real, and kill what leaked, from the UI
+
+> Part of the [DeFlow delivery plan](../README.md) · [Board](../board.md) ·
+> [Flows for this epic](../flows/EPIC-27-operational-controls-flows.md)
+
+|                      |                                                                                                                                                              |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Epic ID**          | EPIC-27                                                                                                                                                      |
+| **Status**           | Not started                                                                                                                                                  |
+| **Priority**         | P1                                                                                                                                                           |
+| **Milestone**        | M1                                                                                                                                                           |
+| **Workstream**       | W20 — added 2026-08-23, after an afternoon of running real workloads left the operator with no lever between "let it run" and "cancel it", and with `kill` one-liners as the only answer to leaked daemons |
+| **Depends on**       | EPIC-15 (daemon API and event stream), EPIC-22 (the run view the controls land on), EPIC-13 (gates — pause must compose with an open gate)                     |
+| **Blocks**           | Nothing mechanical. It blocks the operator's ability to share a machine between DeFlow and anything else without a terminal open                              |
+| **PRD requirements** | F10.1, NF1, NF8                                                                                                                                              |
+| **Architecture**     | [05-orchestration.md](../../05-orchestration.md) (the drive loop pause hooks into), [09-workspace-and-safety.md §4](../../09-workspace-and-safety.md), [11-daemon-api.md](../../11-daemon-api.md) |
+
+## Goal
+
+On 2026-08-23 the operator ran real framing loads, a redesign build, and a test gate on one
+machine. Two controls were missing, and both were felt, not imagined:
+
+1. **There is no pause.** When load average passed 100, the only levers on a running run were
+   cooperative cancel (the run is over; nothing resumes) and the kill switch (everything is
+   over). An operator who needs the machine for twenty minutes — or who wants a run held while
+   they think about a gate — has no way to say *hold, exactly here, and continue later*. The
+   ledger already records everything needed to resume; what is missing is a state the drive
+   respects.
+
+2. **Leaked daemons are invisible until they are a load problem.** MET-807's leak put six
+   orphaned `deflow up` daemons on the machine in one day, then six more by evening. Each was
+   found by `ps | grep` in a terminal and killed by hand-typed pids — twice, because the list
+   grew back. The daemon knows what a DeFlow process looks like better than a grep does; the UI
+   should show the orphans and offer the kill, so process hygiene does not require a terminal
+   and a steady hand at `kill`.
+
+Neither story invents new run semantics. Pause is a scheduling fact (the drive does not advance a
+paused run), not a process fact (nothing is signalled, nothing torn down); the orphan sweep kills
+only processes it can positively attribute to DeFlow, and never itself.
+
+## Stories
+
+| Story | Title | Size | Depends on |
+| -- | -- | -- | -- |
+| KAR-27.1 | Pause and resume a run, from the UI and the CLI | M | — |
+| KAR-27.2 | Orphaned daemons: counted, named and killable from the UI | M | — |
+
+### KAR-27.1 — Pause and resume a run, from the UI and the CLI
+
+**As** an operator sharing a machine with a running run, **I want** a pause button that actually
+holds the run — and a resume that continues it exactly where it held — **so that** "not right
+now" stops meaning "never" (cancel) or "let it fight me for the machine" (nothing).
+
+**Acceptance criteria**
+
+1. `POST /api/runs/:id/pause` appends `run.paused` (by whom: operator) to the ledger; from that
+   event on, the drive does not advance the run: no new node is spawned, no retry fires, no
+   scheduled wake is dispatched. A wake that comes due while paused is deferred, not dropped.
+2. A child process already in flight when pause lands is **not** signalled. Its turn completes
+   and its result is recorded normally; the run then holds before the next advance. Pause is a
+   scheduling state, not a kill.
+3. `POST /api/runs/:id/resume` appends `run.resumed`; the next tick advances the run from
+   exactly the ledger state it held at, including any wake deferred during the pause.
+4. An open human gate on a paused run remains visible and answerable; the recorded answer does
+   not advance the run until resume. Pausing changes what the *drive* does, never what the
+   operator may say.
+5. The paused state survives a daemon restart: recovery reads `run.paused` without a matching
+   `run.resumed` and holds the run, same as an unbroken daemon life would.
+6. The run/workflow view shows a pause control on a running run and a resume control on a paused
+   one; the status chip says `paused — by operator` with the since-instant. `deflow pause <runId>`
+   and `deflow resume <runId>` do the same through the same endpoints, and `deflow status` names
+   the state.
+7. Pause composes with cancel: cancelling a paused run works and is exactly cooperative cancel.
+   Pausing a run that is already concluded, cancelled or awaiting nothing refuses with a message
+   naming the state, and changes nothing.
+
+**Execution plan.** TDD. Red first at the drive: a paused run's due wake does not dispatch and an
+unpaused one's does; then the ledger events and recovery; then the API pair; then CLI and UI. The
+UI control lands on the run header the EPIC-24/27-era redesign of the workflow view defines —
+coordinate, do not fork, if that redesign is mid-flight. Model: opus for implementation and
+review; fable may plan.
+
+### KAR-27.2 — Orphaned daemons: counted, named and killable from the UI
+
+**As** an operator whose test runs leak daemons (MET-807), **I want** the UI to show every
+DeFlow process on this machine that is not the daemon serving me — and a button that kills the
+orphans — **so that** reclaiming my machine does not require `ps`, a regex, and hand-typed pids.
+
+**Why this is mitigation, not the fix.** The leak itself is MET-807's to close at the source.
+This story assumes leaks will exist anyway (a crashed test leg leaves one regardless) and makes
+them visible and disposable.
+
+**Acceptance criteria**
+
+1. `GET /api/hygiene/daemons` answers the DeFlow-shaped processes on this machine that are not
+   the answering daemon: `deflow up` invocations under ephemeral install paths (`_npx`, temp
+   dirs) and `packages/daemon/src/main.ts` processes whose parent is gone (ppid 1). Each row
+   carries pid, start time, the path that identifies it as DeFlow's, and why it is classed an
+   orphan. The answering daemon itself, and a live `node --watch` supervisor's current child,
+   are never listed.
+2. Attribution is positive, never pattern-luck: a process is listed only when its command line
+   carries a DeFlow entrypoint the daemon recognises. A process the daemon cannot positively
+   attribute is not listed and not killable through this surface, whatever it looks like.
+3. `POST /api/hygiene/daemons/kill` kills the *currently listed* orphans — SIGTERM, a bounded
+   grace, then SIGKILL — and answers per-pid outcomes (killed / already gone / survived, with
+   errno). The sweep is recorded in the answering daemon's own log with the pids and outcomes.
+4. The Runtimes panel (or Settings, wherever the daemon rows live) shows the orphan count when
+   it is non-zero, with the list one click away and the kill button beside it; the count
+   refreshes after a sweep. Zero orphans renders nothing — hygiene is not a permanent fixture.
+5. A pid that was reused between list and kill is not killed: the kill verifies the process
+   start time still matches the listing before signalling (the same guard `killTree`'s pid-reuse
+   check already implements — reuse it, do not re-derive it).
+6. The one-command story stays honest: everything the button does, `deflow doctor --kill-orphans`
+   (or the doctor section the CLI already has) can do headless, with the same attribution rules
+   and the same per-pid report.
+
+**Execution plan.** TDD. Red first at attribution: a fixture `ps` table with DeFlow orphans, the
+live daemon, a watcher pair, and near-miss impostors (a user's own `node main.ts` that is not
+DeFlow's) — the classifier must list exactly the orphans. Then the kill sweep over killTree's
+existing pid-reuse guard; then the endpoints; then the panel. Model: opus for implementation and
+review; fable may plan.
+
+## Scope decisions recorded rather than taken quietly
+
+- **Pause does not signal children (SIGSTOP was considered and rejected).** Stopping a vendor CLI
+  mid-API-call risks timeouts, half-written transcripts and vendor-side session damage that
+  DeFlow cannot repair. Letting the in-flight turn finish costs at most one turn of latency and
+  keeps every recorded invariant true. If a hard freeze is ever needed, that is a new story with
+  its own risks, not a widening of this one.
+- **The orphan sweep does not reach into containers or other machines.** NF6 keeps M1 on one
+  machine; the sweep's scope is the daemon's own host, full stop.
+- **Workflow-granular pause (pausing one node while siblings run) is out.** The run is the unit
+  the drive schedules and the unit the operator reasons about; per-node holds are M2 material if
+  they are anything.
+
+## Definition of done
+
+Every AC verified by the flow file's scenarios; the gate green; and one performed walk: start a
+real run, pause it mid-framing from the browser, watch the drive go quiet, resume it, watch it
+conclude — then leak a daemon on purpose (kill a test leg mid-install), see the count appear,
+and clear it with the button.

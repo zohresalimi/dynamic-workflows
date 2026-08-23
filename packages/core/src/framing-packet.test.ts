@@ -52,6 +52,21 @@ suite('EPIC-10-S12 — the framing agent inherits no other node’s context (AC9
     ).toContain('read');
   });
 
+  it('states that a tool denial is policy, never an operator decision, and that lookups are not plan steps', async () => {
+    // 2026-08-23: a headless auto-denial of a Linear read reached a spec as
+    // "Operator declined the Linear list_issues call" — no operator was asked
+    // anything — and the spec framed a story the tracker had already closed.
+    // The packet is where the agent learns not to write that sentence.
+    const packet = await buildFramingPacket(base);
+    const permission = packet.segments.find(
+      (segment) => segment.id === 'pinned-constraints-permission',
+    );
+
+    expect(permission?.text).toContain('never an operator decision');
+    expect(permission?.text).toContain('never describe a denial as the operator declining');
+    expect(permission?.text).toContain('not a step to put in a plan');
+  });
+
   it('pins nothing derived from a spec, because the spec is what this node produces', async () => {
     const packet = await buildFramingPacket(base);
 
