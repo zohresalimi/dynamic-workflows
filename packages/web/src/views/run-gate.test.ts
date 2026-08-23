@@ -225,6 +225,51 @@ suite('EPIC-19-S82 — the run’s own view renders the pending gate (AC6)', () 
   });
 });
 
+/**
+ * KAR-22.5 AC3, on the eight run routes that mount this band and no gate card
+ * — `run-plan`, `run-timeline`, `run-diff`, `run-context`, `run-criteria`,
+ * `run-node-output`, `run-memory`, `plan-evolution`. `../views/
+ * run-gate-answer.test.ts` asserts the same acceptance criterion against
+ * `../components/gate/SpecEvidence.vue`, which only exists on the workflows
+ * route, so without this the full form could drop the spec entirely and stay
+ * green. AC3's red condition is stated as "approving is a click on a document
+ * nobody read"; the assertions below are its two halves — the bytes are in the
+ * document, and `compact` is the only form allowed to omit them.
+ */
+suite('EPIC-22-S59 — the full band carries the spec on routes with no card', () => {
+  const SPEC = 'Goal\nMigrate the checkout module\n\nAcceptance criteria\n- AC1 it builds';
+
+  const gateWithSpec = () => ({
+    node: SPEC_GATE_NODE,
+    prompt: SPEC,
+    options: SPEC_APPROVAL_OPTIONS.map((option) => ({ id: option.id, label: option.label })),
+  });
+
+  it('renders the gate’s own prompt verbatim, folded but never unmounted', () => {
+    const screen = render(RunGateBanner, { props: { runId: RUN, gate: gateWithSpec() } });
+
+    const prompt = screen.container.querySelector('[data-run-gate-prompt]');
+    expect(prompt, 'the band is the only surface showing this gate here').not.toBeNull();
+    expect(prompt?.textContent).toBe(SPEC);
+
+    // Collapsed, like the terminal equivalent above — the same
+    // `checkVisibility()` claim, so a change to `UiDisclosure`'s
+    // `unmountOnHide` fails here instead of quietly emptying the assertion.
+    expect((prompt as HTMLElement).checkVisibility()).toBe(false);
+  });
+
+  it('omits it only in `compact`, where the card beside it owns the hook', () => {
+    const screen = render(RunGateBanner, {
+      props: { runId: RUN, gate: gateWithSpec(), compact: true },
+    });
+
+    expect(screen.container.querySelector('[data-run-gate-prompt]')).toBeNull();
+    expect(screen.container.querySelector('[data-run-gate-banner]')?.textContent).toContain(
+      SPEC_GATE_NODE,
+    );
+  });
+});
+
 /** The frames above, through the parser the wire actually uses. */
 function parsed(seq: number, event: Event): Event {
   const result = parseEvent({

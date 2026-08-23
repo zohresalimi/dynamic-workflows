@@ -57,19 +57,30 @@
  * in full, which is exactly what system law 4 forbids. So `compact` renders
  * one line and a link to the card's anchor instead.
  *
- * Everywhere else the band is unchanged in substance: the node, every option,
- * and the terminal equivalent. That is KAR-22.5 AC1's contract — a gate is
- * answerable *from anywhere*, not only from the run's own screen — and
- * `compact` is a claim about duplication on one route, never a claim that the
- * answer path went away. The `<pre>` of the whole rendered spec is the one
- * thing the full form drops: a band above the router outlet is not where a
- * 2 KB document is read, and `data-run-gate-prompt` now belongs to the card
- * that lays it out.
+ * Everywhere else the band is unchanged in substance: the node, the whole
+ * rendered spec, every option, and the terminal equivalent. That is KAR-22.5
+ * AC1's contract — a gate is answerable *from anywhere*, not only from the
+ * run's own screen — and `compact` is a claim about duplication on one route,
+ * never a claim that anything else went away.
+ *
+ * The spec itself is the part that had to move rather than vanish. A band
+ * above the router outlet is not where 2 KB of document is *laid out* — the
+ * card does that, section by section — but AC3's red condition is an operator
+ * approving a document nobody put on screen, and eight run routes
+ * (`run-plan`, `run-timeline`, `run-diff`, `run-context`, `run-criteria`,
+ * `run-node-output`, `run-memory`, `plan-evolution`) mount this band and no
+ * card. So the full form keeps `<pre data-run-gate-prompt>` verbatim, folded
+ * into a `UiDisclosure` exactly as the terminal equivalent is a few lines
+ * below: collapsed, so the band stays a band, but never unmounted — the text
+ * is in `textContent`, reachable by find-in-page, and one click from being
+ * read. `compact` is the only form without it, because on that one route the
+ * card beside it owns `data-run-gate-prompt`.
  *
  * Verifies: EPIC-19-S82, EPIC-22-S58, EPIC-22-S59, EPIC-22-S61, EPIC-22-S62,
  * EPIC-22-S65, EPIC-22-S67 · KAR-19.12 AC6 · KAR-22.5 AC1–AC6, AC8
  */
 import GateOptions from './gate/GateOptions.vue';
+import { UiDisclosure } from './ui/index.ts';
 
 withDefaults(
   defineProps<{
@@ -105,6 +116,17 @@ withDefaults(
         <span class="run-gate__node" data-run-gate-node>{{ gate.node }}</span>
         <span class="run-gate__wait">is waiting for you</span>
       </p>
+
+      <!--
+        AC3 — what is being asked, in the gate's own words. For the F1.3 gate
+        this is the whole rendered spec, which is why it is a `<pre>` with a
+        scroll of its own rather than a paragraph. Collapsed by default so the
+        band stays a band; `UiDisclosure` keeps it mounted, so the spec is in
+        `textContent` and findable whether or not it is open.
+      -->
+      <UiDisclosure v-if="gate.prompt" label="Read what was asked">
+        <pre class="run-gate__prompt" data-run-gate-prompt>{{ gate.prompt }}</pre>
+      </UiDisclosure>
 
       <GateOptions :run-id="runId" :gate="gate" />
     </template>
@@ -156,5 +178,26 @@ withDefaults(
   margin-left: auto;
   font-size: var(--text-sm);
   color: var(--ink-muted);
+}
+
+/*
+ * The spec, when the band is the only thing on the route showing it. Layer 2
+ * on the band's own surface with no border of its own — the band already has
+ * one, and law 1 does not spend a second wall inside it. Same treatment as
+ * `./gate/SpecEvidence.vue`'s own fallback `<pre>`, one rung smaller because
+ * this is a band and that is a card.
+ */
+.run-gate__prompt {
+  margin: 6px 0 0; /* geometry — clears the disclosure's trigger */
+  max-height: 14rem;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm);
+  color: var(--ink-strong);
+  background: var(--surface-inset);
+  border-radius: var(--radius-sm);
+  padding: 10px; /* geometry — the code block's own padding */
 }
 </style>

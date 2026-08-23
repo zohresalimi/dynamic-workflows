@@ -320,12 +320,17 @@ function dotColour(status: RunStatus): string {
 /**
  * The gate the run on screen has stopped on, or `null`.
  *
- * `useRunStore().openGate` and a check that it belongs to *this* run: the store
- * holds one run at a time, but the check is cheap and the failure it prevents
- * — the previous run's gate card surviving a route change for one tick — is
- * silent (EPIC-22-S43's whole subject, one surface over).
+ * `useRunStore().openGate` and a real check that it belongs to *this* run —
+ * `run.runId === currentRun`, not merely "some run is on screen". The store
+ * holds one run at a time, so the window is a single render tick, but the card
+ * below is handed its `run-id` from the route and its `gate` from the store,
+ * and two sources for one fact is how the previous run's gate survives a route
+ * change silently (EPIC-22-S43's whole subject, one surface over). The check
+ * costs a string compare and makes the two sources agree by construction.
  */
-const openGate = computed(() => (currentRun.value === null ? null : run.openGate));
+const openGate = computed(() =>
+  currentRun.value !== null && run.runId === currentRun.value ? run.openGate : null,
+);
 
 /** No plan yet, and the run has stopped to ask a human something. */
 const pendingPlan = computed(() => run.planNodes.length === 0 && openGate.value !== null);
@@ -650,14 +655,12 @@ const startedAt = computed<string | null>(
   justify-self: start;
 }
 
-/* The project's path, inside `RunHeader`'s own project line. Kept under its
-   original class name because it is the same fact in the same voice; only the
-   element it hangs off moved. */
-.workspace__path {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-}
+/* `.workspace__path` used to live here. The element moved into
+   `../components/RunHeader.vue`, and scoped CSS does not cross that boundary,
+   so the rule was styling nothing while looking like it styled the path —
+   `.run-header__project` sets the same mono/`--text-xs`/`--ink-faint`
+   treatment on the line that contains it, in the file that renders it. The
+   class name went with the rule; the path is a bare `<span>` there now. */
 
 .workspace__empty {
   max-width: 40rem;

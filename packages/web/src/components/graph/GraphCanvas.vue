@@ -973,7 +973,7 @@ function onKeydown(event: KeyboardEvent): void {
   order: 0; /* first in the pill, ahead of both buttons below */
   padding: 0 3px; /* geometry — direction A's own label gutter */
   font-family: var(--font-mono);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
   color: var(--ink-muted);
   white-space: nowrap;
 }

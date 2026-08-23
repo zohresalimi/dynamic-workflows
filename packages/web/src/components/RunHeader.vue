@@ -87,7 +87,7 @@ defineProps<{
 
     <p class="run-header__project">
       <span data-workspace-project-name>{{ projectName }}</span>
-      <span v-if="projectPath" class="workspace__path">{{ projectPath }}</span>
+      <span v-if="projectPath">{{ projectPath }}</span>
     </p>
   </header>
 </template>
