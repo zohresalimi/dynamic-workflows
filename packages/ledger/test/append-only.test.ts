@@ -15,6 +15,28 @@ import { readdirSync, readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it, describe as suite } from 'vitest';
 import { SQL_AGGREGATE_PROJECTION, SQL_PRIMARY_KEY_LOOKUP } from '../../../test/support/guards.ts';
+/**
+ * The package's own exports, imported **statically**.
+ *
+ * This was `await import('../src/index.ts')` inside the test body, and that is
+ * the whole of the flake `test/integration/project-slices.test.ts` has been
+ * carrying a comment about since 2026-08-07: *"this spec has twice had a nested
+ * runner exit 1 outright during a full-suite run … and that failure has never
+ * reproduced in isolation"*. It reproduced on the EPIC-19 gate with a name on
+ * it — this file, `Test timed out in 5000ms` — because the module graph behind
+ * `../src/index.ts` includes better-sqlite3's native binding, and loading it
+ * costs 521 / 731 / 1117 ms on an idle machine here. Inside a body the runner
+ * times at 5 s, that is a test whose subject is the *loader*: nest a unit slice
+ * at four workers inside an integration slice already running seven, and the
+ * same import goes past the ceiling and takes an unrelated timing spec down
+ * with it.
+ *
+ * Static, the cost is paid during collection, which `testTimeout` does not
+ * govern, and the body is left as what it always meant to be: reading the names
+ * off an object. Nothing about the assertion changes — a namespace import is
+ * the same module object the dynamic one resolved to.
+ */
+import * as ledger from '../src/index.ts';
 
 interface Source {
   readonly path: string;
@@ -91,9 +113,8 @@ suite('nothing mutates a row in event (AC7)', () => {
    */
   const MUTATOR = /^(amend|update|delete|remove|prune|rewrite|patch)/i;
 
-  it('exports no amend, update, delete, prune or rewrite for events', async () => {
-    const ledger: Record<string, unknown> = await import('../src/index.ts');
-    const suspicious = Object.entries(ledger)
+  it('exports no amend, update, delete, prune or rewrite for events', () => {
+    const suspicious = Object.entries(ledger as Record<string, unknown>)
       .filter(([name, value]) => MUTATOR.test(name) && typeof value === 'function')
       .map(([name]) => name);
     expect(suspicious).toEqual([]);
