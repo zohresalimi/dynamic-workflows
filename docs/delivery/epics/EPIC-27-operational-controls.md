@@ -44,6 +44,7 @@ only processes it can positively attribute to DeFlow, and never itself.
 | -- | -- | -- | -- |
 | KAR-27.1 | Pause and resume a run, from the UI and the CLI | M | — |
 | KAR-27.2 | Orphaned daemons: counted, named and killable from the UI | M | — |
+| KAR-27.3 | A run that is framing looks alive: status, heartbeat and live activity (added) | M | — |
 
 ### KAR-27.1 — Pause and resume a run, from the UI and the CLI
 
@@ -119,6 +120,48 @@ live daemon, a watcher pair, and near-miss impostors (a user's own `node main.ts
 DeFlow's) — the classifier must list exactly the orphans. Then the kill sweep over killTree's
 existing pid-reuse guard; then the endpoints; then the panel. Model: opus for implementation and
 review; fable may plan.
+
+### KAR-27.3 — A run that is framing looks alive: status, heartbeat and live activity (added 2026-08-23)
+
+**As** an operator who just started a run, **I want** the page to show that the framing agent is
+alive and what it is doing, **so that** three minutes of real interrogation does not read as a
+stuck run.
+
+**Why now.** On 2026-08-23 a framing turn spent minutes making five Linear queries and reading
+the repository — visible in the vendor transcript, invisible in DeFlow. The workflow view said
+`submitted — waiting to be framed` (the `created`-state label, even though
+`provider.session_opened` was in the ledger) over a plan panel stuck on *"Reading the run's
+ledger…"*. The operator's words: *"the user is unsure if anything is going on."* The daemon
+holds the child's stdout stream the whole time and throws it away unless the turn fails.
+
+**Acceptance criteria**
+
+1. While a pre-execution turn (framing, recon, planner) is in flight, the run's status label
+   names the node and the fact it is running — e.g. `framing — running · attempt 1 of 3` with
+   the since-instant — and `submitted — waiting to be framed` appears only when no attempt is
+   actually in flight. The distinction is derived from the ledger (`provider.session_opened`
+   without a matching completion), never from in-memory daemon state, so it survives a restart
+   and renders identically in the UI and `deflow status`.
+2. A pre-execution turn's stdout is persisted incrementally as the run's io stream (the same
+   store execution nodes use), not buffered until exit — so the evidence of what a turn did
+   exists in the ledger even for a turn that is still running, and the existing io-tail API
+   serves it without a new endpoint.
+3. The workflow view, while a pre-execution turn runs, shows a live activity strip: elapsed
+   time, time since last output, attempt number, and a human-readable tail of what the agent is
+   doing now (at minimum, tool invocations as they happen). It updates from the io stream
+   without a page refresh and disappears when the turn concludes.
+4. The plan panel never shows a bare loading sentence indefinitely: when the feed is hydrated
+   and no plan exists, it says what is actually happening now (framing running / awaiting
+   spec approval / planner compiling), each state named from ledger facts.
+5. Failure detail improves for free: when a pre-execution turn exits non-zero with empty
+   stderr, the failure's evidence includes the tail of the persisted stdout — closing the
+   2026-08-23 gap where a rate-limited turn died with `stderr: ""` and the operator-readable
+   cause existed only in the vendor's own transcript file.
+
+**Execution plan.** Designed, implemented and verified in a dynamic workflow (design: fable;
+implementation: opus; verification: sonnet). TDD: red first at the status projection (a seeded
+ledger with `session_opened` and no completion must not label `waiting`), then the incremental
+io persistence at `spawnTurn`, then the API/UI strip.
 
 ## Scope decisions recorded rather than taken quietly
 
