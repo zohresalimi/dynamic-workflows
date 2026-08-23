@@ -1257,6 +1257,11 @@ export {
   specHistory,
   withCoveredByGates,
 } from './spec-approval.ts';
+// The spec gate's node id as a plain string, in a module that imports nothing.
+// The browser's *initial* chunk may not carry zod, and comparing against a gate
+// id is the one thing an eagerly-loaded view needs it for — see
+// `./spec-gate-node.ts` for the whole argument.
+export { SPEC_GATE_NODE_ID } from './spec-gate-node.ts';
 // KAR-10.1 — task intake: `normaliseInput` and the `task.submitted` payload shape.
 export type {
   IntakeKind,

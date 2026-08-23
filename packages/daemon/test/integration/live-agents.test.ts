@@ -37,6 +37,7 @@ import {
   liveFramingAgent,
   livePlannerAgent,
   liveReconAgent,
+  type OpenedSession,
 } from '../../src/pipeline/live-agents.ts';
 import { writeRunSchemas } from '../../src/run-schemas.ts';
 
@@ -53,10 +54,13 @@ const childEnv = (): Record<string, string> => ({
 });
 
 /** One derived id per call, from the tuple and nothing else (KAR-19.13). */
-function nextSession(nodeId: ReturnType<typeof NodeIdSchema.parse>): () => string {
+function nextSession(nodeId: ReturnType<typeof NodeIdSchema.parse>): () => OpenedSession {
   const runId = RunIdSchema.parse('run_20260813T110608Z_379fc8');
   const turns = { count: 0 };
-  return () => vendorSessionId({ runId, nodeId, attempt: turns.count++ });
+  return () => {
+    const attempt = turns.count++;
+    return { id: vendorSessionId({ runId, nodeId, attempt }), attempt };
+  };
 }
 
 function turnOptions(over: Partial<LiveTurnOptions> & { cwd: string }): LiveTurnOptions {

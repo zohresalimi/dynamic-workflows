@@ -64,8 +64,13 @@ import { disabledProviderIds, withDisabled } from '../providers/settings.ts';
 import { writeRunSchemas } from '../run-schemas.ts';
 import { loadSchemaDirectory } from '../schema-store.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
+import type { TurnIoWriter } from './live-agents.ts';
 import { liveFramingAgent, livePlannerAgent, liveReconAgent } from './live-agents.ts';
-import { openPreExecutionSession, PRE_EXECUTION_NODES } from './pre-execution-session.ts';
+import {
+  openPreExecutionIo,
+  openPreExecutionSession,
+  PRE_EXECUTION_NODES,
+} from './pre-execution-session.ts';
 import {
   createRunChain,
   type RunChain,
@@ -288,7 +293,7 @@ export function createLiveRunChain(options: LiveChainOptions): RunChain {
        * Reading the count at spawn time is what makes both a repair and a
        * restarted daemon get their own.
        */
-      const openSession = (kind: keyof typeof PRE_EXECUTION_NODES) => (): string =>
+      const openSession = (kind: keyof typeof PRE_EXECUTION_NODES) => () =>
         openPreExecutionSession({
           db,
           runId,
@@ -297,6 +302,26 @@ export function createLiveRunChain(options: LiveChainOptions): RunChain {
           epoch,
           ts: options.clock.now(),
         });
+
+      /**
+       * KAR-27.3 AC2 — where each turn's bytes go while it is still running.
+       *
+       * The same shape as `openSession` and for the same reason: a turn kind
+       * is fixed here, and the *child* is not. `repair` and every re-advanced
+       * wake open their own session, and each one's transcript belongs under
+       * its own attempt — so the sink is built per child from the number that
+       * child's session came back with.
+       */
+      const openIo =
+        (kind: keyof typeof PRE_EXECUTION_NODES) =>
+        (attempt: number): TurnIoWriter =>
+          openPreExecutionIo({
+            db,
+            runId,
+            nodeId: PRE_EXECUTION_NODES[kind],
+            attempt,
+            clock: options.clock,
+          });
 
       const git = new Git(cwd);
 
@@ -317,7 +342,12 @@ export function createLiveRunChain(options: LiveChainOptions): RunChain {
           // repaired turn or a re-advanced wake presented an id a previous
           // process had already spent, and the vendor refused it: *"Session ID
           // … is already in use"*.
-          framing: liveFramingAgent({ ...turn, cwd, openSession: openSession('framing') }),
+          framing: liveFramingAgent({
+            ...turn,
+            cwd,
+            openSession: openSession('framing'),
+            openIo: openIo('framing'),
+          }),
           // Spawned **in the detached worktree** the chain provisions, not in
           // the repository: a survey of the operator's own working tree would
           // report uncommitted state as a fact about the run's base commit.
@@ -325,8 +355,14 @@ export function createLiveRunChain(options: LiveChainOptions): RunChain {
             ...turn,
             cwd: reconWorktreePath(runDir),
             openSession: openSession('recon'),
+            openIo: openIo('recon'),
           }),
-          planner: livePlannerAgent({ ...turn, cwd, openSession: openSession('planner') }),
+          planner: livePlannerAgent({
+            ...turn,
+            cwd,
+            openSession: openSession('planner'),
+            openIo: openIo('planner'),
+          }),
         },
         schemas,
         registry: schemas,

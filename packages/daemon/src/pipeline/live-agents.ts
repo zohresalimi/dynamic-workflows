@@ -48,6 +48,7 @@ import {
   parseShimLine,
   providerSpec,
   rejectedArgument,
+  shimResultFailure,
   shimStructuredOutput,
 } from '@DeFlow/adapters';
 import type { StructuredOutput } from '@DeFlow/core';
@@ -109,6 +110,32 @@ function readSchemaDocument(schemaPath: string, provider: string): string {
   }
 }
 
+/**
+ * What `openSession` answers: the vendor id for this child, and the attempt it
+ * was the *n*th of.
+ *
+ * A pair rather than the bare id, because the number is what addresses the
+ * turn's io (AC2) and the caller that opened the session is the only one that
+ * can state it without counting the row it has just written.
+ */
+export interface OpenedSession {
+  readonly id: string;
+  /** 0-based, as the event envelope counts sessions. */
+  readonly attempt: number;
+}
+
+/**
+ * KAR-27.3 AC2 — where one child's bytes go as they arrive.
+ *
+ * Synchronous and fire-and-forget: `spawnTurn`'s `data` handler is on the hot
+ * path of a stream the child is filling, and a port that returned a promise
+ * would put a queue of unresolved writes between DeFlow and the runaway guard.
+ * The implementation is one `INSERT` (`./pre-execution-session.ts`).
+ */
+export interface TurnIoWriter {
+  append(stream: 'stdout' | 'stderr', data: Uint8Array): void;
+}
+
 /** Everything one turn's invocation depends on. */
 export interface LiveTurnOptions {
   /** The registry id of the adapter this turn runs on. */
@@ -134,7 +161,18 @@ export interface LiveTurnOptions {
    * implementation counts the turns the **ledger** already records and derives
    * from that, so a daemon restart does not start counting again.
    */
-  openSession(): string;
+  openSession(): OpenedSession;
+  /**
+   * KAR-27.3 AC2 — opens the io sink for **this** child, addressed by the
+   * attempt `openSession` just returned.
+   *
+   * Optional, and the optionality is a claim rather than convenience: a turn
+   * driven without a ledger (the unit specs over the mock agent) has nowhere to
+   * put bytes, and a required port would have made every one of them build a
+   * fake store to exercise a path they are not about. A turn with no sink runs
+   * exactly as it did before this story — it just leaves no transcript behind.
+   */
+  readonly openIo?: ((attempt: number) => TurnIoWriter) | undefined;
   /** Built by `buildChildEnv()`. This module never reads `process.env`. */
   readonly env: Readonly<Record<string, string>>;
   /**
@@ -165,7 +203,76 @@ interface ChildResult {
  * the ledger three hours later. */
 const excerpt = (text: string): string => text.trim().slice(0, 2000);
 
-function spawnTurn(options: LiveTurnOptions, argv: readonly string[]): Promise<ChildResult> {
+/**
+ * KAR-27.3 AC5 — the child's **last** bytes of stdout.
+ *
+ * The other end from `excerpt`, and deliberately: a stream-json turn's first
+ * bytes are its `system/init` line, which says nothing about why it died, while
+ * the result envelope that does is the last thing written. A head excerpt of
+ * stdout would have been the same silence in a longer form.
+ */
+const tailExcerpt = (text: string): string => text.trim().slice(-2000);
+
+/**
+ * The failure the child stated in its own result frame, or `null` when it
+ * stated none this build can read.
+ *
+ * `parseShimLine` throws on a line that is not JSON, and this is a diagnosis
+ * path: a child that died mid-frame must not turn a readable failure into an
+ * unreadable one, so a line that will not parse is passed over rather than
+ * raised. The last statement wins, because a turn that reported twice reported
+ * last about how it ended.
+ */
+function statedCause(stdout: string): NodeFailureError | null {
+  let found: NodeFailureError | null = null;
+  for (const line of stdout.split('\n')) {
+    try {
+      const parsed = parseShimLine(line);
+      if (parsed === null) continue;
+      found = shimResultFailure(parsed) ?? found;
+    } catch {
+      // Not a frame. The tail excerpt still carries it verbatim.
+    }
+  }
+  return found;
+}
+
+/**
+ * KAR-27.3 AC2 — a writer that gives up quietly rather than taking the turn
+ * down with it.
+ *
+ * Liveness narrates a turn; it does not get a vote on whether the turn runs. A
+ * full disk or a locked ledger has to cost the operator a transcript, never the
+ * eight minutes of interrogation the transcript was describing — so the first
+ * throw is logged once and persistence stops for the rest of the child's life.
+ * Logged *once* because the alternative, on a stream producing a chunk every
+ * few milliseconds, is a log file that fills the disk that was already full.
+ */
+function forgivingly(writer: TurnIoWriter | undefined, provider: string): TurnIoWriter | null {
+  if (writer === undefined) return null;
+  let broken = false;
+  return {
+    append: (stream, data) => {
+      if (broken) return;
+      try {
+        writer.append(stream, data);
+      } catch (error) {
+        broken = true;
+        agents.warn(
+          { provider, stream, err: error },
+          'the io store refused a chunk of this turn; the turn continues without a transcript',
+        );
+      }
+    },
+  };
+}
+
+function spawnTurn(
+  options: LiveTurnOptions,
+  argv: readonly string[],
+  io?: TurnIoWriter,
+): Promise<ChildResult> {
+  const writer = forgivingly(io, options.provider);
   return new Promise<ChildResult>((resolve, reject) => {
     const child = spawn(options.binaryPath, [...argv], {
       cwd: options.cwd,
@@ -208,8 +315,17 @@ function spawnTurn(options: LiveTurnOptions, argv: readonly string[]): Promise<C
         return;
       }
       out.push(chunk);
+      // AC2 — persisted at exactly the point it is buffered, and not before.
+      // The chunk that trips the guard above is neither buffered nor stored, so
+      // the transcript at exit is byte-for-byte what the buffer captured; what
+      // the child wrote *before* it went wrong stays as evidence of the
+      // runaway.
+      writer?.append('stdout', chunk);
     });
-    child.stderr.on('data', (chunk: Buffer) => err.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => {
+      err.push(chunk);
+      writer?.append('stderr', chunk);
+    });
 
     child.once('error', (error: Error) => {
       if (aborted) return;
@@ -309,13 +425,13 @@ export async function structuredTurn(
   // KAR-19.13 — one session per child, not one per `LiveTurnOptions`. Opened
   // here rather than at the call site so `repair` and a re-advanced wake get
   // their own without either having to remember to ask.
-  const sessionId = options.openSession();
+  const session = options.openSession();
 
   const argv = spec.shim.argv({
     resolved: { provider: spec.id, path: options.binaryPath },
     worktree: options.cwd,
     prompt: request.prompt,
-    sessionId,
+    sessionId: session.id,
     // Every pre-execution turn is a `read` node (`RECON_PERMISSION`, and
     // framing and planning observe rather than edit). A level the vendor's own
     // flags cannot express is refused by the builder above, before a process
@@ -336,7 +452,10 @@ export async function structuredTurn(
   const connector = connectorSettingsArgument(spec, 'read', options.connectorServers ?? []);
   const spawned = [...argv, ...connector];
 
-  const result = await spawnTurn(options, spawned);
+  // AC2 — the sink is opened on the attempt this child's session is, so a
+  // repair's transcript sits beside the turn it repaired rather than on top of
+  // it.
+  const result = await spawnTurn(options, spawned, options.openIo?.(session.attempt));
 
   if (result.code !== 0) {
     // KAR-19.8 AC5, AC6 — before anything else: if the child refused an
@@ -358,15 +477,49 @@ export async function structuredTurn(
       throw refusal;
     }
 
+    // KAR-27.3 AC5 — the child said nothing on stderr. On 2026-08-23 that is
+    // exactly how a rate-limited turn died: `stderr: ""` in the ledger, and the
+    // operator-readable cause only in the vendor's own transcript file. It was
+    // on stdout the whole time, in the turn's own result frame.
+    const stated = statedCause(result.stdout);
+    if (stated !== null && excerpt(result.stderr) === '') {
+      const cause = new NodeFailureError(
+        `${options.provider} exited ${String(result.code ?? 'on a signal')} and said why on ` +
+          `stdout rather than stderr: ${stated.message}`,
+        {
+          reason: stated.deflowFailure.reason,
+          class: stated.deflowFailure.class,
+          detail: {
+            ...stated.deflowFailure.detail,
+            provider: options.provider,
+            code: result.code,
+            signal: result.signal,
+            stderr: '',
+            stdoutTail: tailExcerpt(result.stdout),
+          },
+        },
+      );
+      agents.warn(
+        { provider: options.provider, code: result.code, signal: result.signal },
+        cause.message,
+      );
+      throw cause;
+    }
+
     const failure = agentExited(result.code, result.signal);
+    // With nothing on stderr the excerpt was the empty string, and *"exited 1
+    // without completing the turn: "* is a ledger message that tells its reader
+    // to go and find the real one somewhere else.
+    const said =
+      excerpt(result.stderr) === '' ? tailExcerpt(result.stdout) : excerpt(result.stderr);
     agents.warn(
       { provider: options.provider, code: result.code, signal: result.signal },
       `${options.provider} exited ${String(result.code ?? result.signal)} without completing the ` +
-        `turn: ${excerpt(result.stderr)}`,
+        `turn: ${said}`,
     );
     throw new NodeFailureError(
       `${options.provider} exited ${String(result.code ?? 'on a signal')} without completing the ` +
-        `turn: ${excerpt(result.stderr)}`,
+        `turn: ${said}`,
       {
         reason: failure.deflowFailure.reason,
         class: failure.deflowFailure.class,
@@ -374,7 +527,11 @@ export async function structuredTurn(
           provider: options.provider,
           code: result.code,
           signal: result.signal,
+          // Never removed, whatever else is added: an empty `stderr` is itself
+          // a fact about the child, and a reader who knows it was empty knows
+          // not to go looking for it.
           stderr: excerpt(result.stderr),
+          ...(excerpt(result.stderr) === '' ? { stdoutTail: tailExcerpt(result.stdout) } : {}),
         },
       },
     );

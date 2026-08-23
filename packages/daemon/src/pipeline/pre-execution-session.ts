@@ -47,9 +47,10 @@
  */
 import type { SessionIdSpec } from '@DeFlow/adapters';
 import { providerSpec, sessionIdIsSingleUse, vendorSessionId } from '@DeFlow/adapters';
-import type { Db, NodeId, RunId } from '@DeFlow/core';
+import type { Clock, Db, NodeId, RunId } from '@DeFlow/core';
 import { NodeIdSchema, ProviderIdSchema } from '@DeFlow/core';
-import { appendEvents, countNodeEventsOfKind } from '@DeFlow/ledger';
+import { appendEvents, appendIoChunk, countNodeEventsOfKind } from '@DeFlow/ledger';
+import type { TurnIoWriter } from './live-agents.ts';
 
 /**
  * KAR-19.8 — the node ids the three pre-execution turns are recorded under.
@@ -125,6 +126,20 @@ export interface OpenPreExecutionSession {
   readonly ts: number;
 }
 
+export interface PreExecutionSession {
+  /** The vendor-side session id this turn's child is given. */
+  readonly id: string;
+  /**
+   * How many sessions this node had already opened — 0 for the first child, in
+   * the same 0-based counting the event envelope uses.
+   *
+   * Returned rather than recomputed by the caller because it is the io
+   * address: the turn's stdout is stored under it (`openPreExecutionIo`), and
+   * a caller that counted again would count this turn's own row.
+   */
+  readonly attempt: number;
+}
+
 /**
  * Records that a turn is about to open a vendor session, and returns the id it
  * derived.
@@ -136,7 +151,7 @@ export interface OpenPreExecutionSession {
  * attempt, which is the behaviour the collision needs — the next turn must not
  * present the id the dead one already created.
  */
-export function openPreExecutionSession(input: OpenPreExecutionSession): string {
+export function openPreExecutionSession(input: OpenPreExecutionSession): PreExecutionSession {
   const attempt = countNodeEventsOfKind(
     input.db,
     input.runId,
@@ -172,5 +187,51 @@ export function openPreExecutionSession(input: OpenPreExecutionSession): string 
     },
   ]);
 
-  return id;
+  return { id, attempt };
+}
+
+/**
+ * KAR-27.3 AC2 — the io sink for one pre-execution child.
+ *
+ * **Why this exists at all.** Until this story a pre-execution turn's stdout
+ * lived in a `Buffer[]` inside `spawnTurn` and was read once, at exit. A turn
+ * that was still running had therefore produced no evidence anywhere anything
+ * could read — which is how a framing turn spent minutes making Linear queries
+ * on 2026-08-23 while the workflow view said *waiting to be framed*. Execution
+ * nodes have had exactly this store since KAR-15.6; the three turns that run
+ * before a plan exists simply were not writing to it.
+ *
+ * **The +1.** `io_chunk.attempt` counts from 1 and the event envelope counts
+ * from 0 (`../exec/ledger-sink.ts` owns the same translation for execution
+ * nodes, and `../http/api.ts` undoes it on the read side). Getting it wrong
+ * does not fail — it silently serves the transcript of the attempt this one
+ * replaced. So the translation happens here, once, on the number
+ * `openPreExecutionSession` returned, rather than at whatever call site
+ * happens to be building a writer.
+ *
+ * **The clock is a port.** `ts` comes from the injected `Clock` per chunk
+ * (NF9); this module reads no clock of its own, exactly as it reads no random
+ * source for the session id.
+ */
+export interface OpenPreExecutionIo {
+  readonly db: Db;
+  readonly runId: RunId;
+  readonly nodeId: NodeId;
+  /** The session attempt, 0-based — what `openPreExecutionSession` returned. */
+  readonly attempt: number;
+  readonly clock: Clock;
+}
+
+export function openPreExecutionIo(input: OpenPreExecutionIo): TurnIoWriter {
+  const address = {
+    runId: input.runId,
+    nodeId: input.nodeId,
+    attempt: input.attempt + 1,
+  } as const;
+
+  return {
+    append: (stream, data) => {
+      appendIoChunk(input.db, { ...address, stream, ts: input.clock.now(), data });
+    },
+  };
 }

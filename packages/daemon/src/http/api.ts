@@ -56,6 +56,7 @@ import {
   acceptanceBoard,
   CANCEL_MODES,
   INTERJECTION_MODES,
+  initialNodeState,
   mintRunId,
   NodeIdSchema,
   parseDeFlowConfig,
@@ -450,6 +451,38 @@ type NodeLookup =
   | { readonly response: Response };
 
 /**
+ * KAR-27.3 AC2 — the `NodeState` a pre-execution turn would have, if the three
+ * of them had one.
+ *
+ * `framing`, `recon` and `planner` never enter `state.nodes`: they are not plan
+ * nodes, they have no `node.scheduled` and no `node.started`, and inventing a
+ * graph entry for them would put a node on the canvas the planner never
+ * proposed. But they now write io (`../pipeline/pre-execution-session.ts`), and
+ * AC2 is explicit that the *existing* endpoint serves it.
+ *
+ * So the shape is synthesised here, at the one seam that needs it, from the
+ * record the reducer already keeps. `attempt` is `sessions - 1` — the latest
+ * child, on the envelope's 0-based numbering — which is what makes
+ * `attemptOf`'s default land on the transcript the operator is watching rather
+ * than on the first one.
+ *
+ * `null` when the run has never opened a session for that id, so a typo still
+ * gets `404 node_not_found` rather than an empty page that reads like a node
+ * with no output.
+ */
+function preExecutionNode(state: RunState, nodeId: string): NodeState | null {
+  const turn = state.preExecution[nodeId];
+  if (turn === undefined || turn.sessions === 0) return null;
+  return {
+    ...initialNodeState(),
+    status: turn.running ? 'running' : 'completed',
+    attempt: turn.sessions - 1,
+    attempts: turn.sessions,
+    startedTs: turn.sinceTs,
+  };
+}
+
+/**
  * The node a read endpoint addressed — `404 node_not_found` when the run holds
  * no such node, which is its **own** code and never the run's.
  *
@@ -462,8 +495,8 @@ function resolveNode(c: Context): NodeLookup {
   if ('response' in found) return found;
 
   const nodeId = c.req.param('nodeId') ?? '';
-  const node = found.state.nodes[nodeId];
-  if (node === undefined) {
+  const node = found.state.nodes[nodeId] ?? preExecutionNode(found.state, nodeId);
+  if (node === null) {
     return {
       response: c.json(
         ...apiError('node_not_found', `run '${found.runId}' has no node '${nodeId}'`, {

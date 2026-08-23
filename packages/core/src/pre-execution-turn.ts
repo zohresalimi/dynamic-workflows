@@ -39,7 +39,7 @@
  * Verifies: EPIC-27-S15, EPIC-27-S16 · KAR-27.3 AC1
  */
 import type { Event } from './events.ts';
-import { DEFAULT_RETRY_POLICY } from './plan-graph.ts';
+import { DEFAULT_MAX_ATTEMPTS } from './retry-defaults.ts';
 
 /**
  * The three turns that run *before* a plan exists, by the node id their events
@@ -88,7 +88,7 @@ const fresh = (sinceTs: number): PreExecutionTurnState => ({
   sessions: 0,
   failures: 0,
   sinceTs,
-  maxAttempts: DEFAULT_RETRY_POLICY.maxAttempts,
+  maxAttempts: DEFAULT_MAX_ATTEMPTS,
 });
 
 const sameTurn = (left: PreExecutionTurnState, right: PreExecutionTurnState): boolean =>
@@ -178,7 +178,7 @@ export function foldPreExecutionTurns(
           sessions: event.payload.attempt + 1,
           failures: before?.failures ?? 0,
           sinceTs: event.ts,
-          maxAttempts: before?.maxAttempts ?? DEFAULT_RETRY_POLICY.maxAttempts,
+          maxAttempts: before?.maxAttempts ?? DEFAULT_MAX_ATTEMPTS,
         },
       });
     }
