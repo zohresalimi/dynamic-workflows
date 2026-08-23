@@ -443,3 +443,40 @@ suite('the generated policy is a golden file (AC8)', () => {
     });
   }
 });
+
+suite('connector permissions ride in the same settings document', () => {
+  const RULES = {
+    allow: ['mcp__claude_ai_Linear__list*'],
+    deny: ['mcp__claude_ai_Linear__*delete*'],
+  } as const;
+
+  const withConnectors = (level: PermissionLevel): Record<string, unknown> =>
+    claudeSandboxPolicy({
+      level,
+      worktree: WORKTREE,
+      version: CURRENT,
+      allowedDomains: DOMAINS,
+      connectorPermissions: RULES,
+    }).settings as unknown as Record<string, unknown>;
+
+  it('every level carries them beside the sandbox block, full included', () => {
+    // `full` relaxes the *sandbox* by explicit opt-in; the connector denials
+    // are not the sandbox, and a level that dropped them would let
+    // bypassPermissions reach delete_* on the operator's tracker.
+    for (const level of PERMISSION_LEVELS) {
+      expect(withConnectors(level).permissions).toEqual(RULES);
+    }
+  });
+
+  it('absent input emits no permissions key at all, so the document is unchanged', () => {
+    for (const level of PERMISSION_LEVELS) {
+      const settings = claudeSandboxPolicy({
+        level,
+        worktree: WORKTREE,
+        version: CURRENT,
+        allowedDomains: DOMAINS,
+      }).settings as unknown as Record<string, unknown>;
+      expect('permissions' in settings).toBe(false);
+    }
+  });
+});

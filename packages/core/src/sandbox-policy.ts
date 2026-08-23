@@ -215,6 +215,18 @@ export interface ClaudeSandboxInput extends SandboxPolicyInput {
    * `degrade` for the rest; passing `degrade` explicitly relaxes the
    * credential default, which is the "explicit configuration" AC6 requires. */
   readonly onGateUnmet?: GateDisposition;
+  /**
+   * The connector tool rules for this node's level, precomputed by the caller
+   * (`@DeFlow/adapters`' `connectorPermissionRules` owns the vocabulary; this
+   * module only carries the document). When present they ride in the same
+   * `--settings` document as the sandbox block — one flag, one document —
+   * including at `full`, where the sandbox relaxes but the destructive-verb
+   * denials do not.
+   */
+  readonly connectorPermissions?: {
+    readonly allow: readonly string[];
+    readonly deny: readonly string[];
+  };
 }
 
 interface CredentialFiles {
@@ -262,7 +274,16 @@ export interface ClaudeSandboxSettings {
 export interface ClaudeSandboxPolicy {
   /** The whole document `--settings` carries. A complete policy, never a diff
    * over whatever the operator happens to have in `~/.claude`. */
-  readonly settings: { readonly sandbox: ClaudeSandboxSettings };
+  readonly settings: {
+    readonly sandbox: ClaudeSandboxSettings;
+    /** Connector tool rules — see `ClaudeSandboxInput.connectorPermissions`.
+     * Absent when the caller passed none, so the document stays byte-identical
+     * for a machine with no connectors. */
+    readonly permissions?: {
+      readonly allow: readonly string[];
+      readonly deny: readonly string[];
+    };
+  };
   readonly degraded: readonly SandboxDegradation[];
 }
 
@@ -290,7 +311,16 @@ function refuseGate(key: ClaudeGatedKey, detected: string, required: string): No
  * `enabled: true`, which is the shape that silently degrades.
  */
 export function claudeSandboxPolicy(input: ClaudeSandboxInput): ClaudeSandboxPolicy {
-  if (input.level === 'full') return { settings: { sandbox: { enabled: false } }, degraded: [] };
+  // Emitted at every level, `full` included: `full` is the operator relaxing
+  // the *sandbox*, and the connector denials are not the sandbox — a level
+  // that dropped them would let bypassPermissions reach `delete_*` on the
+  // operator's tracker.
+  const permissions =
+    input.connectorPermissions === undefined ? {} : { permissions: input.connectorPermissions };
+
+  if (input.level === 'full') {
+    return { settings: { sandbox: { enabled: false }, ...permissions }, degraded: [] };
+  }
 
   const degraded: SandboxDegradation[] = [];
 
@@ -355,6 +385,7 @@ export function claudeSandboxPolicy(input: ClaudeSandboxInput): ClaudeSandboxPol
         // `disabled: false` is stated: this is a complete document.
         excludedCommands: [],
       } satisfies ClaudeSandboxSettings,
+      ...permissions,
     },
     degraded,
   };

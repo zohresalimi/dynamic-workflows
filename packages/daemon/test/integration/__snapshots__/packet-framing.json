@@ -14,9 +14,9 @@
     "limitTokens": 100000
   },
   "totals": {
-    "tokens": 177,
+    "tokens": 297,
     "byKind": {
-      "pinned.constraints": 61,
+      "pinned.constraints": 181,
       "pinned.spec": 0,
       "pinned.pathscope": 0,
       "task.brief": 116,
@@ -27,10 +27,10 @@
       "tool.output": 0
     }
   },
-  "renderedPromptHandle": "artifact://beb3dcb30e46192758f8e3de4be52c6f5342e6c0af878855dc1af47c052ec79b",
+  "renderedPromptHandle": "artifact://069e10148c732d25fabc95b7e879a957ccf5df6c837f5a73c721187df126e7fe",
   "pinnedDigests": [
     "sha256-7feaf65eb17825978cf47ec5ddb616584939997dc46f9d94d02320754a76ef23",
-    "sha256-8295839c788161a64c6b1ba79fd646232d3b78dcd20f0a068c798d660560e4fe"
+    "sha256-515efbf9a113fc47cea477cc79204f9583276708adc00291451820136bb28ac0"
   ],
   "segments": [
     {
@@ -50,14 +50,14 @@
       "id": "pinned-constraints-permission",
       "kind": "pinned.constraints",
       "sourceEvent": 5,
-      "contentHash": "sha256-8295839c788161a64c6b1ba79fd646232d3b78dcd20f0a068c798d660560e4fe",
+      "contentHash": "sha256-515efbf9a113fc47cea477cc79204f9583276708adc00291451820136bb28ac0",
       "tokens": {
-        "estimated": 47,
+        "estimated": 167,
         "method": "heuristic"
       },
       "pinned": true,
       "compactable": false,
-      "text": "Permission level (pinned): read\nYou may read this repository and you may ask the operator a clarifying question. You may not write a file and you may not run a command that changes one."
+      "text": "Permission level (pinned): read\nYou may read this repository and you may ask the operator a clarifying question. You may not write a file and you may not run a command that changes one.\nConnected tools (issue trackers, code hosts, and any other server this machine is connected to) are governed by DeFlow policy: non-destructive reads are pre-authorized, and a denied tool call is a policy or environment fact, never an operator decision — no one was asked, so never describe a denial as the operator declining. Consult connected trackers directly while you frame: looking something up is part of this interrogation, not a step to put in a plan or behind an approval."
     },
     {
       "id": "task-raw",

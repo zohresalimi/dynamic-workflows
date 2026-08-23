@@ -43,6 +43,7 @@
 import {
   agentExited,
   argumentRefused,
+  connectorSettingsArgument,
   killTree,
   parseShimLine,
   providerSpec,
@@ -136,6 +137,17 @@ export interface LiveTurnOptions {
   openSession(): string;
   /** Built by `buildChildEnv()`. This module never reads `process.env`. */
   readonly env: Readonly<Record<string, string>>;
+  /**
+   * The connected MCP servers the vendor CLI on this machine has, by display
+   * name — discovered once per daemon life (`connector-servers.ts`) and
+   * carried here so every pre-execution turn grants the read verbs on them.
+   * Absent or empty means no `permissions` document is emitted and every
+   * connector call is denied by the vendor's own headless default — which on
+   * 2026-08-23 was recorded in a spec as *"Operator declined the Linear
+   * list_issues call"* when no operator had been asked anything, and framed a
+   * story Linear had already marked Done.
+   */
+  readonly connectorServers?: readonly string[];
 }
 
 /** The document a turn is contracted to return. */
@@ -318,13 +330,19 @@ export async function structuredTurn(
     schemaDocument,
   });
 
-  const result = await spawnTurn(options, argv);
+  // The connector rules for a read turn, on the same flag the sandbox document
+  // rides for execution nodes — but never both: pre-execution turns have no
+  // sandbox document, so this is the invocation's one settings argument.
+  const connector = connectorSettingsArgument(spec, 'read', options.connectorServers ?? []);
+  const spawned = [...argv, ...connector];
+
+  const result = await spawnTurn(options, spawned);
 
   if (result.code !== 0) {
     // KAR-19.8 AC5, AC6 — before anything else: if the child refused an
     // argument *DeFlow* chose, that is what the operator needs to read, and it
     // is `permanent` rather than a retry every thirty seconds for ever.
-    const rejected = rejectedArgument({ argv, stderr: result.stderr, spec });
+    const rejected = rejectedArgument({ argv: spawned, stderr: result.stderr, spec });
     if (rejected !== null) {
       const refusal = argumentRefused({
         provider: options.provider,
