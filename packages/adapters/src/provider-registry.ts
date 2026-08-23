@@ -825,7 +825,23 @@ export const PROVIDER_SPECS = {
       // vendor, so declaring it here means the day this vendor starts
       // validating the flag is a diff in this row rather than another afternoon
       // lost to the failure claude produced.
-      sessionId: { flag: '--session-id', form: 'uuid' },
+      //
+      // KAR-19.13 AC7. `reuse` is the **second** claim about this flag and it is
+      // as unverified as the form: nothing says whether Gemini's `--session-id`
+      // creates or attaches, and no turn has ever been run against it twice with
+      // one id. `create-only` is the floor for the same reason `uuid` is — a
+      // fresh session per turn costs one transcript handle, and re-presenting an
+      // id a vendor refuses costs the run.
+      sessionId: {
+        flag: '--session-id',
+        form: 'uuid',
+        reuse: 'create-only',
+        reuseProvenance: {
+          how: 'help',
+          on: '2026-08-02',
+          note: 'the flag is documented; whether it creates or attaches is not, so the floor applies',
+        },
+      },
       // KAR-19.11 AC3. Every element this `build` can emit. `--session-id` is
       // the one row this vendor shares with the entry that broke, and it is
       // declared `uuid` for the reason above rather than because Gemini has
@@ -1041,7 +1057,22 @@ export const PROVIDER_SPECS = {
       // valid UUID.` for anything else, and did so on every attempt of a real
       // operator's run. The form is declared here so the check is a table row
       // rather than the next by-hand run.
-      sessionId: { flag: '--session-id', form: 'uuid' },
+      //
+      // KAR-19.13 AC7. **Verified by execution on 2026-08-16**, three days later
+      // and by the same route: `--session-id` *creates* a session and cannot
+      // attach to one, so `run_20260816T194933Z_839b9b` died at planning on
+      // `Session ID 5f2b8935-25e5-5c1c-83c6-a97d1b151f08 is already in use` —
+      // the id its own first planner turn had spent.
+      sessionId: {
+        flag: '--session-id',
+        form: 'uuid',
+        reuse: 'create-only',
+        reuseProvenance: {
+          how: 'executed',
+          on: '2026-08-16',
+          note: 'exits 1 with "is already in use" for an id a previous process created',
+        },
+      },
       // KAR-14.2 AC9. **Verified 2026-08-02** from the same 2.1.220 flag table:
       // `--max-budget-usd <amt>`, whose refusal comes back as the
       // `error_max_budget_usd` result subtype the classifier maps to `gate`.

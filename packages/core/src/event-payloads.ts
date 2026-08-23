@@ -2111,6 +2111,45 @@ export const ProviderRateLimitedSchema = z.strictObject({
   raw: z.unknown(),
 });
 
+/**
+ * KAR-02.11 AC1, for KAR-19.13 — the vendor session DeFlow opened for one turn of a
+ * pre-execution node, journaled **before** the child is spawned.
+ *
+ * The record exists because the *attempt* has to be a fact in the ledger rather
+ * than a number in a process. On 2026-08-16 a daemon restart re-advanced
+ * `run_20260816T194933Z_839b9b`, the planner turn derived its session from a
+ * pinned `attempt: 0` for the second time, and Claude Code refused an id its own
+ * first turn had already created. A counter on a context object is correct in
+ * one daemon life and resets, on the restart, to exactly the value that
+ * collides — so the count of these rows for a `(runId, node)` is what the next
+ * turn's attempt is.
+ *
+ * Written before the spawn for the same reason `node.started`'s `session` is:
+ * a crash between the two would otherwise leave a session created in the
+ * vendor's projects directory that the ledger has no handle for.
+ *
+ * The payload carries the pair rather than the id alone. `attempt` beside
+ * `session.id` is what makes the derivation checkable offline — recompute
+ * `vendorSessionId(runId, node, attempt)` from the ledger and it must equal what
+ * is recorded — which is what stops a `randomUUID()` "fix" that satisfies the
+ * vendor and makes every transcript unfindable.
+ *
+ * It is deliberately **not** a `node.started`. A pre-execution turn is not a
+ * plan node, and marking one `running` in the reducer would leave `framing`
+ * permanently in flight in every projection that reads node state.
+ */
+export const ProviderSessionOpenedSchema = z.strictObject({
+  node: NodeIdSchema,
+  attempt,
+  provider: ProviderIdSchema,
+  session: z.strictObject({
+    id: z.string().min(1),
+    /** The same discriminator `node.started.session` carries: `minted` is the
+     * CLI shim, where DeFlow chose the uuid before spawn. */
+    origin: z.enum(['minted', 'session/new']),
+  }),
+});
+
 /** F5.9 — redaction fails closed. */
 export const ExportBlockedSchema = z.strictObject({
   target: z.enum(EXPORT_TARGETS),
@@ -2207,6 +2246,7 @@ export const EVENT_SCHEMAS = {
   'budget.ceiling.set': { v: 1, payload: BudgetCeilingSetSchema },
   'provider.probed': { v: 1, payload: ProviderProbedSchema },
   'provider.rate_limited': { v: 1, payload: ProviderRateLimitedSchema },
+  'provider.session_opened': { v: 1, payload: ProviderSessionOpenedSchema },
   'export.blocked': { v: 1, payload: ExportBlockedSchema },
 } as const;
 

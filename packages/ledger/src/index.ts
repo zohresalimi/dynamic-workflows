@@ -25,6 +25,7 @@
 export {
   type AppendOptions,
   appendEvents,
+  countNodeEventsOfKind,
   EVENT_TAIL_SQL,
   type EventDraft,
   EventDraftSchema,

@@ -17,7 +17,7 @@
  */
 import { spawn } from 'node:child_process';
 import { mkdirSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import type { ExecShimPorts } from './run.ts';
 
@@ -83,5 +83,19 @@ export function createProcessPorts(): ExecShimPorts {
     nowMs: () => Date.now(),
     cwd: () => process.cwd(),
     resolvePath: (from, relative) => resolve(from, relative),
+
+    claimSession: (dir, sessionId) => {
+      mkdirSync(dir, { recursive: true });
+      try {
+        // `wx` is the claim: the create fails if the file is there, and it
+        // fails in the kernel rather than after a read this process did. Two
+        // children racing for one id therefore get one `true` between them,
+        // which is the behaviour being impersonated.
+        writeFileSync(join(dir, encodeURIComponent(sessionId)), '', { flag: 'wx' });
+        return true;
+      } catch {
+        return false;
+      }
+    },
   };
 }

@@ -10,10 +10,10 @@
 | **Priority**         | P0                                                                                                 |
 | **Milestone**        | M1                                                                                                 |
 | **Workstream**       | W0 (see [roadmap §2.2](../../17-roadmap.md))                                                       |
-| **Size**             | ~12 days across 10 stories                                                                         |
+| **Size**             | ~13 days across 11 stories                                                                         |
 | **Depends on**       | EPIC-01                                                                                            |
 | **Blocks**           | EPIC-03, EPIC-04, EPIC-05, EPIC-06, EPIC-09, EPIC-10, EPIC-11, EPIC-12, EPIC-15, EPIC-16           |
-| **PRD requirements** | F1.2, F1.3, F1.5, F2.1, F2.3, F2.4, F2.5, F4.1, F4.3, F6.2, F6.3, F6.4, F6.9, F7.3, F7.4, NF8, NF9 |
+| **PRD requirements** | F1.2, F1.3, F1.5, F2.1, F2.3, F2.4, F2.5, F3.2, F4.1, F4.3, F6.2, F6.3, F6.4, F6.9, F7.3, F7.4, NF8, NF9 |
 | **Architecture**     | [04-domain-model.md](../../04-domain-model.md)                                                     |
 
 ## Goal
@@ -85,7 +85,7 @@ forward-compatibility mechanism in the whole system lives in one `default: retur
 
 ## Definition of Done (epic level)
 
-- [ ] All ten stories Done.
+- [ ] All eleven stories Done.
 - [ ] Every scenario in [the flow file](../flows/EPIC-02-domain-model-flows.md) exists as an
       automated test at the level its `Automated at:` line names, and the suite is green on
       `ubuntu-26.04` and `macos-26`, Node 24 and Node 26.
@@ -695,13 +695,104 @@ the union, with unmapped throws becoming `{ reason: 'internal' }` and the stack 
 
 ---
 
+### KAR-02.11 — `provider.session_opened`, and the envelope a counted event cannot omit _(added)_
+
+|                 |                                       |
+| --------------- | ------------------------------------- |
+| **Status**      | Not started                           |
+| **Priority**    | P0                                    |
+| **Size**        | S                                     |
+| **Depends on**  | KAR-02.1, KAR-02.7                    |
+| **PRD**         | F3.2, F4.3, NF9, NF10                 |
+| **Verified by** | EPIC-02-S29, EPIC-02-S30              |
+
+**As** the derivation that must never hand a vendor a session id a previous process already spent,
+**I want** the session a turn opens to be an event kind in the union whose envelope carries the
+`(nodeId, attempt)` the count is taken over, **so that** the attempt is a fact in the ledger that
+survives a daemon restart and every past turn's id stays recomputable offline.
+
+Added on 2026-08-23 under [README §9](../README.md#9-changing-the-plan), as the plan amendment that
+[KAR-19.13](./EPIC-19-live-run-pipeline.md) should have been written against and was not. That story
+needs the attempt of a pre-execution turn to be **counted from the ledger** — a counter on a context
+object is correct in one daemon life and resets, on the restart that produced the report, to exactly
+the value that collides — and the only durable form of that count is rows of an event kind. EPIC-19's
+Out-of-scope is explicit that widening the `Event` union is this epic's work and that doing it from
+there is "a schema change made in the wrong file"; the schema, its documentation in
+[04 §9](../../04-domain-model.md#9-the-event-union) and its own tests therefore live here, and
+EPIC-19 depends on this story rather than containing it.
+
+The kind is `provider.session_opened`, `v: 1`, payload
+`{ node: NodeId; attempt: number; provider: ProviderId; session: { id: string; origin: 'minted' | 'session/new' } }`.
+Two design points are the story. It is **not** a `node.started`: a pre-execution turn is not a plan
+node, and marking one `running` would leave `framing` permanently in flight in every projection that
+reads node state. And the payload carries the **pair**, not the id alone, because `attempt` beside
+`session.id` is what lets anyone recompute `vendorSessionId(runId, node, attempt)` from the ledger
+and check it — which is what stops a `randomUUID()` "fix" that satisfies the vendor and makes every
+transcript unfindable.
+
+The second half of the story is the one the reported defect actually turns on. The count is taken
+over the ledger's `node_id` **column**, so an envelope that omits `nodeId` — or one whose `nodeId`
+disagrees with the `node` its own payload restates — counts zero for ever, and the next turn derives
+the identical id the vendor has already refused. The envelope's `nodeId` and `attempt` are optional
+for every other kind and must not be here, and that correspondence is declared once as a table
+rather than as a check bolted onto one kind, because the next counted kind will otherwise repeat it.
+
+**Acceptance criteria**
+
+1. `provider.session_opened` is a registered kind at `v: 1` whose payload schema is strict: an
+   unknown key, a missing or negative `attempt`, an empty `session.id`, or an `origin` outside
+   `minted | session/new` are each rejected. `attempt` carries the same non-negative-integer rule
+   the envelope's does, so "the attempt is a count" is a schema fact and not a convention.
+2. The kind is in [04 §9](../../04-domain-model.md#9-the-event-union)'s table with the same payload,
+   so KAR-02.7 test 7 — the table-driven docs/registry check — covers it and the two cannot drift.
+3. `parseEvent` rejects a `provider.session_opened` whose envelope has **no** `nodeId`. The event
+   exists to be counted under a node, and an event no count can see is the defect of 2026-08-16
+   written into the schema.
+4. `parseEvent` rejects one whose envelope `nodeId` differs from `payload.node`, or whose envelope
+   `attempt` differs from `payload.attempt`. The two are written by different lines of one call and
+   nothing checked they agreed; the issue text names the field and both values.
+5. The correspondence is a **table**, not a special case. The payload keys that restate an envelope
+   field are declared once, per kind, in an exported table that `parseEvent` reads; the table is
+   type-constrained to real kinds and real envelope fields, and a table-driven test covers every
+   entry from both sides — the matching envelope parses, the mismatched one does not.
+6. A rejection is a value, and the forward-compatibility order is unchanged: the mismatch comes back
+   as `invalid-payload` (never a throw), and `unknown-kind` and `future-version` are still both
+   decided **before** any of this runs, so a downgraded daemon still reports "newer than me" rather
+   than "corrupt" (KAR-02.7 AC1, AC3).
+7. The kind is additive only. It ships at `v: 1` with no upcaster, `assertUpcasterChainsComplete()`
+   stays green, and the arms its addition forces on exhaustive switches elsewhere carry no
+   behaviour: EPIC-03's fold returns no state change (a `running` node here would be a `framing`
+   node nothing ever completes) and EPIC-16's `EVENT_KIND_OWNERS` claims it for no projection.
+
+**Test plan (TDD)** — unit, all of it: this is `packages/core`, which reads no clock, opens no
+database and spawns nothing.
+
+| #   | Level | Test                                                                                                                     | Red when                                                                                                                                        |
+| --- | ----- | -------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit  | `parseEvent` on a well-formed `provider.session_opened` whose envelope has no `nodeId`; assert `invalid-payload` naming `node` | The envelope's `nodeId` is optional for every kind, so an event the counter can never see parses clean and the wedge comes back                     |
+| 2   | unit  | Envelope `nodeId: 'planner'` against `payload.node: 'framing'`, and envelope `attempt: 0` against `payload.attempt: 1`; assert both rejected and both values named | Nothing compares them, so one call writing the pair from two variables records a row that counts under the wrong node |
+| 3   | unit  | The payload's own shape: extra key, missing `attempt`, `attempt: -1`, `session.id: ''`, `origin: 'resumed'` — each rejected, the good fixture accepted | The schema is loose enough for a count to arrive as a string                                                                                       |
+| 4   | unit  | Table-driven over the echo table: for every entry and every echoed field, the matching envelope parses and a mismatched one does not | The rule is one `if` for one kind, and the next counted kind repeats the defect                                                                    |
+| 5   | unit  | `parseEvent` still returns `unknown-kind` for `future.thing` and `future-version` for this kind at `v: 2`                 | The echo check runs before the two forward-compatibility branches, and a downgraded daemon calls a newer ledger corrupt                             |
+
+**Notes / risks** — the tempting shortcut is to leave the envelope's `nodeId` optional and have the
+counting query read the payload's `node` out of the JSON instead. It works, and it moves an index
+lookup into a scan of every row of a run's history to answer a question about three of them — and it
+leaves the two fields free to disagree, which is the thing that makes a row uncountable in the first
+place. The rule this story writes is narrow on purpose: only kinds that declare an echo are checked,
+and every other kind's envelope stays exactly as optional as it was.
+
+---
+
 ## Sequencing
 
 KAR-02.1 and KAR-02.9 have no dependencies and should be done first, in that order or in parallel —
 everything else needs a validated `NodeId` and a stable hash. KAR-02.10 can be done any time after
 KAR-02.1 and must precede KAR-02.7. KAR-02.7 is last of the schema stories because its payloads
 reference every other type. KAR-02.8 can start as soon as two schemas exist; getting the drift check
-green early makes every subsequent story cheaper.
+green early makes every subsequent story cheaper. KAR-02.11 follows KAR-02.7 — it adds one kind to
+the union that story ships and one rule to its `parseEvent` — and precedes
+[KAR-19.13](./EPIC-19-live-run-pipeline.md), which is the story that needs the kind.
 
 ## Risks
 
@@ -711,7 +802,8 @@ green early makes every subsequent story cheaper.
 | **`returns.maxTokens`' 500–2000 band is Unverified** (roadmap A4-6) — practitioner consensus, no controlled study.                                                    | Ship 1500 as one named constant, per-node-type override, and instrument oversize rate from M1. Do not design a budget mechanism around the number.                                                 |
 | **A canonical-encoder refactor silently orphans every `plan` row.**                                                                                                   | The committed golden hex in KAR-02.9 test 5, and a written rule that changing it is a migration.                                                                                                   |
 | **Zod 4's `z.toJSONSchema()` may emit constructs `Ajv2020` in strict mode refuses** for some schema shapes (e.g. certain `z.discriminatedUnion` or `z.record` forms). | KAR-02.8 criterion 3 catches it at emit time; the fallback is to restrict the Zod constructs used in schemas that must round-trip, and that restriction is cheap to apply now and expensive later. |
-| **Two added stories (02.9, 02.10) expand the epic beyond the skeleton.**                                                                                              | Both are strictly required by [04-domain-model.md](../../04-domain-model.md) §3/§7/§8 and by KAR-02.7's dependencies; both are `S`. Total epic remains ~12 days, inside the ~15-day guidance.      |
+| **Three added stories (02.9, 02.10, 02.11) expand the epic beyond the skeleton.**                                                                                     | The first two are strictly required by [04-domain-model.md](../../04-domain-model.md) §3/§7/§8 and by KAR-02.7's dependencies. The third is a downstream epic's need for one more kind, brought back to the epic that owns the union rather than absorbed where it was found — which is what [README §9](../README.md#9-changing-the-plan) asks for and what did not happen on 2026-08-22. All three are `S`; the epic reads ~13 days, inside the ~15-day guidance. |
+| **The union grows from wherever a kind is first needed.** `provider.session_opened` was widened into the union from EPIC-19 on 2026-08-22, with the §9 table edited from that branch — precisely the "schema change made in the wrong file" EPIC-19's own Out-of-scope names. | KAR-02.11 is the amendment: the kind, its documentation and its tests belong to this epic and EPIC-19 depends on them. The general rule already exists and held everywhere else — a kind needed by another epic is a story **here**, and the epic that needs it cites it in `Depends on`. |
 
 ---
 

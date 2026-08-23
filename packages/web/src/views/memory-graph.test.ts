@@ -66,6 +66,29 @@ const press = (selector: string): void => {
   target.click();
 };
 
+/**
+ * How long a poll may wait for the canvas to draw — **not** a budget.
+ *
+ * Nothing bearing `data-memory-node` can exist until three things that have
+ * nothing to do with the aggregation have happened: `GraphCanvas` dynamically
+ * imports `./layout.ts` so that elkjs stays out of the initial chunk (KAR-17.1
+ * AC5), that engine starts a worker of its own per canvas, and ELK lays 42
+ * boxes out inside it. Measured on this branch, cold, the first bubble of the
+ * three-thousand-fact graph arrives at 1641 / 1816 / 2286 ms across three runs
+ * — so Vitest's 1 s default made the *worker boot* the assertion and turned
+ * every stress row red before a single number this file cares about was read.
+ *
+ * 15 s is the figure every other canvas spec already waits with — `plan-graph`,
+ * `plan-scrubber`, `plan-before-results`, `live-graph` and `GraphCanvas`'s own
+ * — and this file was the one that omitted it. The timing claim KAR-17.9 AC7
+ * actually makes is untouched and still the only budget here: three thousand
+ * facts against a thirty-fact control on the same machine, ceilinged at four
+ * times it (below). A ceiling that big is why raising this wait cannot hide a
+ * regression — a graph that got slower fails on the ratio, which is the number
+ * the story is about, rather than on how long Chromium took to start a worker.
+ */
+const DRAWN = { timeout: 15_000 } as const;
+
 interface OpenOptions {
   readonly runId?: string;
   readonly events?: readonly ReturnType<typeof happyPath12>[number][];
@@ -87,7 +110,7 @@ async function openMemory(options: OpenOptions = {}): Promise<number> {
   const run = useRunStore(shell.pinia);
   const started = performance.now();
   for (const event of options.events ?? happyPath12()) run.applyEvent(event);
-  await expect.poll(() => all('[data-memory-node]').length).toBeGreaterThan(0);
+  await expect.poll(() => all('[data-memory-node]').length, DRAWN).toBeGreaterThan(0);
   return performance.now() - started;
 }
 
@@ -106,7 +129,7 @@ suite('KAR-17.9 test 4 — three thousand facts, forty-two bubbles (AC1, AC7)', 
     expect(big.facts).toBe(3000);
 
     await openMemory({ runId: STRESS_RUN, events: big.events });
-    await expect.poll(() => all('[data-memory-node]').length).toBe(42);
+    await expect.poll(() => all('[data-memory-node]').length, DRAWN).toBe(42);
 
     expect(all('[data-memory-kind="fact"]')).toHaveLength(0);
     // The count is on the bubble, which is what makes the aggregate readable
@@ -125,11 +148,11 @@ suite('KAR-17.9 test 4 — three thousand facts, forty-two bubbles (AC1, AC7)', 
       runId: STRESS_RUN,
       events: memoryStressLedger({ factsPerProducer: 1, consumersPerFact: 2 }).events,
     });
-    await expect.poll(() => all('[data-memory-node]').length).toBe(42);
+    await expect.poll(() => all('[data-memory-node]').length, DRAWN).toBe(42);
     shell.unmount();
 
     const measured = await openMemory({ runId: STRESS_RUN, events: memoryStressLedger().events });
-    await expect.poll(() => all('[data-memory-node]').length).toBe(42);
+    await expect.poll(() => all('[data-memory-node]').length, DRAWN).toBe(42);
 
     const ceiling = Math.max(control * 4, 1500);
     expect(
@@ -157,9 +180,9 @@ suite('KAR-17.9 test 5 — a fact’s provenance, and its complete consumer set 
   async function openGuardFact(): Promise<void> {
     await openMemory({ consumers: CONSUMERS });
     press('[data-memory-node="node:plan-migration"] [data-memory-expand]');
-    await expect.poll(() => all('[data-memory-kind="fact"]').length).toBe(1);
+    await expect.poll(() => all('[data-memory-kind="fact"]').length, DRAWN).toBe(1);
     press(`[data-memory-node="fact:${GUARD_FACT}"]`);
-    await expect.poll(() => one(`[data-fact-detail="${GUARD_FACT}"]`)).not.toBeNull();
+    await expect.poll(() => one(`[data-fact-detail="${GUARD_FACT}"]`), DRAWN).not.toBeNull();
   }
 
   it('shows the writing node, its evidence, the timestamp and the confidence', async () => {
@@ -209,16 +232,18 @@ suite('KAR-17.9 test 5 — a fact’s provenance, and its complete consumer set 
     await openMemory({ runId: STRESS_RUN, events: big.events });
 
     press('[data-memory-node="node:producer-0"] [data-memory-expand]');
-    await expect.poll(() => all('[data-memory-kind="fact"]').length).toBe(50);
+    await expect.poll(() => all('[data-memory-kind="fact"]').length, DRAWN).toBe(50);
 
     expect(one('[data-memory-page]')?.textContent).toContain('1–50 of 900');
 
     press('[data-memory-next]');
-    await expect.poll(() => one('[data-memory-page]')?.textContent).toContain('51–100 of 900');
+    await expect
+      .poll(() => one('[data-memory-page]')?.textContent, DRAWN)
+      .toContain('51–100 of 900');
     expect(all('[data-memory-kind="fact"]')).toHaveLength(50);
 
     // Collapsing restores the aggregate.
     press('[data-memory-node="node:producer-0"] [data-memory-expand]');
-    await expect.poll(() => all('[data-memory-kind="fact"]').length).toBe(0);
+    await expect.poll(() => all('[data-memory-kind="fact"]').length, DRAWN).toBe(0);
   });
 });

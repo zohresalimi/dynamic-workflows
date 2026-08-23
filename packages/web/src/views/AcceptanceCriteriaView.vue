@@ -89,12 +89,28 @@ watch(
   { immediate: true },
 );
 
-/** Where a finding's line opens (AC3) — the per-node diff, at its file and line. */
+/**
+ * Where a finding's line opens (AC3) — the per-node diff, at its file and line.
+ *
+ * The route name is chosen from the address this board is *at*, not assumed.
+ * KAR-25.1 gave every run view two records — `run-diff` under
+ * `/projects/:projectId/runs/:runId/diff` and `legacy-run-diff` under
+ * `/runs/:runId/diff` — and a run with no project renders the legacy one in
+ * place, because it has nowhere to redirect to. Naming `run-diff` from there
+ * and handing it only a `runId` makes vue-router throw `Missing required param
+ * "projectId"` while it resolves the `RouterLink`, which is *during* the
+ * detail's render: the criterion does not open at all, and the operator loses
+ * the "and back again" walk F7.4 is about rather than merely getting a bad
+ * href. Every fixture under `test/fixtures/runs/` is a project-less run, so
+ * this was every recorded run opened from a bookmark.
+ */
 function diffTo(verdict: CriterionVerdictVM, finding: FindingVM): LocationQueryRaw | null {
   if (finding.location === null) return null;
+  const projectId = route.params['projectId'];
+  const scoped = typeof projectId === 'string' && projectId !== '';
   return {
-    name: 'run-diff',
-    params: { runId: runId.value },
+    name: scoped ? 'run-diff' : 'legacy-run-diff',
+    params: scoped ? { projectId, runId: runId.value } : { runId: runId.value },
     query: {
       scope: 'node',
       node: verdict.evaluatedNode,

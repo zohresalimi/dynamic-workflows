@@ -21,7 +21,7 @@ import type { Event } from '../src/events.ts';
 import { parseEvent } from '../src/events.ts';
 import { reduce } from '../src/reduce.ts';
 import { initialRunState, NODE_STATUSES, RUN_STATUSES, type RunState } from '../src/run-state.ts';
-import { NODE, PAYLOADS, RUN_ID, SHA } from './support/event-payloads.fixture.ts';
+import { envelopeEchoes, NODE, PAYLOADS, RUN_ID, SHA } from './support/event-payloads.fixture.ts';
 
 const TS = 1_754_313_093_000;
 
@@ -33,6 +33,8 @@ function event(kind: EventKind, seq = 1): Event {
     kind,
     v: EVENT_SCHEMAS[kind].v,
     epoch: 1,
+    // KAR-02.11 — the envelope fields this kind's payload restates, if any.
+    ...envelopeEchoes(kind),
     payload: PAYLOADS[kind],
   });
   if (result.status !== 'ok') {

@@ -48,6 +48,30 @@ export const CLAUDE_VERBOSE_REQUIRED =
 export const CLAUDE_INVALID_SESSION_ID = 'Error: Invalid session ID. Must be a valid UUID.';
 
 /**
+ * Claude Code 2.1.220's refusal of an id it has **already created**
+ * (KAR-19.13).
+ *
+ * **Verified by execution on 2026-08-16**, the expensive way again: run
+ * `run_20260816T194933Z_839b9b` reached `compilePlanV1` and the child exited 1
+ * on
+ *
+ * ```
+ * Session ID 5f2b8935-25e5-5c1c-83c6-a97d1b151f08 is already in use
+ * ```
+ *
+ * because `--session-id` **creates** a session and does not attach to one, and
+ * DeFlow presented the id a previous process had already spent. The wording
+ * carries none of the words `rejectedArgument` matched at the time — it is not
+ * *invalid*, *unknown* or *unsupported* — which is why the refusal came back
+ * classified `transient` and the run retried the identical id every tick.
+ *
+ * Built from the id rather than frozen, because the value is what tells the
+ * reader *which* session was spent.
+ */
+export const claudeSessionInUse = (sessionId: string): string =>
+  `Session ID ${sessionId} is already in use`;
+
+/**
  * Claude Code 2.1.220's third refusal, character for character (KAR-19.11).
  *
  * **Verified by execution on 2026-08-13 at 19:59**, two minutes after the one

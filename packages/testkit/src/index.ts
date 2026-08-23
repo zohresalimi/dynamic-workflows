@@ -58,6 +58,7 @@ export {
   CLAUDE_INVALID_SESSION_ID,
   CLAUDE_VERBOSE_REQUIRED,
   type CliDecision,
+  claudeSessionInUse,
   DIALECT_ENV,
   DIALECTS,
   type Dialect,
@@ -81,6 +82,7 @@ export {
   NOW_ENV,
   runExecShim,
   SEED_ENV,
+  SESSION_STORE_ENV,
   seedFrom,
 } from './exec-shim/run.ts';
 export {

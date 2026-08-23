@@ -15,6 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import type { EventKind } from '../../src/event-payloads.ts';
+import { EVENT_ENVELOPE_ECHOES } from '../../src/events.ts';
 
 const fixture = (relative: string): Record<string, unknown> =>
   JSON.parse(readFileSync(fileURLToPath(new URL(relative, import.meta.url)), 'utf8'));
@@ -474,5 +475,39 @@ export const PAYLOADS: Record<EventKind, unknown> = {
     resetsAt: 1_754_313_093_000,
     raw: { type: 'rate_limit_event' },
   },
+  // KAR-02.11 — the pre-execution turn's own session, with the attempt it was
+  // derived from beside it. The id is the one Claude Code refused on
+  // 2026-08-16, which is `vendorSessionId(run_20260816T194933Z_839b9b,
+  // planner, 0)` — the fixture and the report are the same value on purpose.
+  'provider.session_opened': {
+    node: 'planner',
+    attempt: 1,
+    provider: 'claude-code',
+    session: { id: '5f2b8935-25e5-5c1c-83c6-a97d1b151f08', origin: 'minted' },
+  },
   'export.blocked': { target: 'report', reason: 'redaction-failed', count: 3 },
 };
+
+/**
+ * KAR-02.11 — the envelope fields a kind's payload restates, taken from the
+ * kind's own fixture.
+ *
+ * Every suite that folds this corpus builds an envelope for it, and a kind that
+ * declares an echo is not a well-formed event without those fields — that is
+ * the rule, not an inconvenience. Deriving them from the table here is what
+ * stops each of those suites hand-writing the same two fields and drifting.
+ */
+export function envelopeEchoes(kind: EventKind): Record<string, unknown> {
+  const echoes: Readonly<Record<string, string>> | undefined = (
+    EVENT_ENVELOPE_ECHOES as Partial<Readonly<Record<string, Readonly<Record<string, string>>>>>
+  )[kind];
+  if (echoes === undefined) return {};
+
+  const payload = PAYLOADS[kind] as Record<string, unknown>;
+  return Object.fromEntries(
+    Object.entries(echoes).map(([payloadKey, envelopeField]) => [
+      envelopeField,
+      payload[payloadKey],
+    ]),
+  );
+}

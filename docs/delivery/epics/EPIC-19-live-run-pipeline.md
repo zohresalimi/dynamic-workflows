@@ -10,7 +10,7 @@
 | **Priority**         | P0                                                                                                                                                                                                                                                                                          |
 | **Milestone**        | M1                                                                                                                                                                                                                                                                                          |
 | **Workstream**       | W13 — added 2026-08-12, after the first live run did nothing (see [roadmap §2.2](../../17-roadmap.md) and §2.3)                                                                                                                                                                              |
-| **Size**             | ~33 days across 11 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                           |
+| **Size**             | ~37 days across 13 stories — over the ~15-day guidance; see Risks                                                                                                                                                                                                                           |
 | **Depends on**       | EPIC-10 (intake, framing, spec gate, recon), EPIC-11 (plan compilation and validation), EPIC-06 (`decide()`, the ticker, `node_wake`, the effect journal), EPIC-09 (packet assembly), EPIC-05 (provider registry and capability probe), EPIC-15 (the HTTP API and the SSE stream), EPIC-16 and EPIC-17 (the store and the views that render it), EPIC-18 (`run`, `status`, `doctor`, the exit-code table), EPIC-13 (human nodes), EPIC-12 (gates), EPIC-14 (cost accounting), EPIC-04 (the bundled mock agent — the binary every scenario here runs against, and the one KAR-19.7 extends) |
 | **Blocks**           | M1's definition of done. PRD §11 is _"you complete a real multi-hour task at work with it"_; until this epic lands, no task of any length can be completed, because no submitted run proceeds past intake                                                                                    |
 | **PRD requirements** | F1.1, F1.2, F1.3, F2.2, F2.3, F3.1, F3.2, F3.4, F3.5, F3.7, F4.1, F4.2, F4.3, F4.4, F4.5, F4.7, F5.7, F6.1, F7.1, F9.1, F9.2, F10.1, F10.6, F10.9, NF1, NF3, NF6, NF7, NF8, NF9, NF10, AR-1                                                                                                 |
@@ -81,6 +81,18 @@ the repository checks the *shape* of an argument against what the vendor accepts
 argv is asserted against fixtures and against fakes that accept whatever they are given. So the
 number of remaining wrong arguments is unknown, and each one costs one real run to discover.
 
+**And on 2026-08-16 a run wedged on an argument DeFlow had already fixed once.** Run
+`run_20260816T194933Z_839b9b` died in `compilePlanV1` with `Session ID
+5f2b8935-25e5-5c1c-83c6-a97d1b151f08 is already in use` — and that id is
+`vendorSessionId({ runId, nodeId: 'planner', attempt: 0 })`, so the planner turn asked the vendor for
+its first session a second time. `live-chain.ts` pins the attempt of every pre-execution turn at `0`,
+which is the right rule for an adapter that resumes natively and the wrong one for the exec-shim
+path, where `vendorSessionIdFor` already states that under `ResumeByReplay` the attempt stays in the
+tuple. KAR-19.13 is that story, and it carries a second half: the vendor's *"already in use"*
+sentence matches none of the refusal phrasings KAR-19.8 introduced, so the failure was classed
+`transient` and retried with the identical id on every tick — the same wedge, behind a different
+wording.
+
 1. **Silence is the defect, not the symptom.** A run that cannot proceed must say so — in the
    ledger, in the terminal and in the UI. The operator lost an afternoon not because DeFlow refused,
    but because it did not.
@@ -137,6 +149,12 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
   argument in the registry, fakes that enforce those forms so a wrong shape is red in `pnpm test`,
   and the F3.4 conformance rows that need a real vendor CLI run behind
   `DeFlow_MANUAL_VENDOR_CLI=1` and reported as skipped.
+- **The fifth, found on 2026-08-16** (KAR-19.13): the pinned `attempt: 0` that makes every
+  pre-execution turn of a run derive one vendor session id for the life of that run, so any second
+  process — a restarted daemon re-advancing an old run, or `FramingSession.repair` replaying into a
+  fresh child — presents an id `claude`'s create-only `--session-id` has already spent; plus the
+  refusal phrasing that classed the vendor's *"already in use"* as `transient` and retried it every
+  tick.
 
 **Out of scope:**
 
@@ -151,6 +169,15 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
   both of which exist and both of which already reduce correctly. Widening the `Event` union is
   [EPIC-02](./EPIC-02-domain-model.md)'s, and doing it from here would be a schema change made in
   the wrong file.
+  **Amended 2026-08-23.** KAR-19.13 needs one kind that did not exist — `provider.session_opened`,
+  whose rows *are* the count that gives a pre-execution turn its attempt — and on 2026-08-22 it was
+  widened into the union from this branch, with [04 §9](../../04-domain-model.md#9-the-event-union)
+  edited from here too: exactly the schema change in the wrong file this rule names. The rule is not
+  relaxed and this is not a second named exception. The kind, its `parseEvent` rule, its §9 row and
+  its unit tests are [KAR-02.11](./EPIC-02-domain-model.md), a story in the epic that owns the union,
+  added under [README §9](../README.md#9-changing-the-plan); KAR-19.13 **depends on** it. Any further
+  kind this epic turns out to need goes the same way — a story in EPIC-02 first, cited here — and no
+  kind is added from this branch without one.
 - **Replacing the replay harness.** [KAR-16.5](./EPIC-16-ui-foundation.md) stays exactly as it is
   and stays the UI's development loop. KAR-19.5 adds the level that was missing above it; it removes
   nothing.
@@ -183,7 +210,7 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
 
 ## Definition of Done (epic level)
 
-- [ ] All eleven stories are Done.
+- [ ] All thirteen stories are Done.
 - [ ] **On a machine with no vendor agent CLI installed at all, a run can be framed, planned and
       executed using only `deflow-mock-agent`** — with no credential, no network and no read of
       `~/.DeFlow`. This is the epic's manual acceptance test and the property KAR-19.5's smoke test
@@ -225,6 +252,13 @@ number of remaining wrong arguments is unknown, and each one costs one real run 
       `PROVIDER_SPECS`, the fake vendor binaries refuse the shapes the real ones refuse so a wrong
       argument is red in `pnpm test`, and no argument value is supplied without a declared form
       (KAR-19.11).
+- [ ] **A run that is re-advanced by a second process still runs.** No pre-execution turn presents a
+      vendor session id an earlier process created: the attempt in the derivation is the ledger's
+      rather than a pinned `0`, and `FramingSession.repair` opens its own session. Every id stays a
+      deterministic function of `(runId, nodeId, attempt)` recomputable from the ledger alone, and
+      `ResumeNative` still derives every attempt from attempt 0. A vendor refusing to reuse a session
+      id is classified `permanent` and named, from a refusal vocabulary asserted over its entries
+      rather than one sentence added per incident (KAR-19.13).
 - [ ] **A run has been performed, by hand, against a real vendor CLI, and pasted.** With the built
       CLI, a scratch git repository, `deflow init` and `claude` on `PATH`,
       `deflow run --file <task.md>` completes the framing turn and produces a plan; the command, its
@@ -1936,11 +1970,148 @@ never *stuck*, not that answering is pleasant.
 
 ---
 
+### KAR-19.13 — A replayed pre-execution turn mints its own vendor session, instead of colliding with the one the last process created _(added)_
+
+|                 |                                                                                                                                                                                                                                                                                                                                          |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                                                                                                                                                                                                                                                                              |
+| **Priority**    | P0                                                                                                                                                                                                                                                                                                                                       |
+| **Size**        | S                                                                                                                                                                                                                                                                                                                                        |
+| **Depends on**  | EPIC-02 [KAR-02.11](./EPIC-02-domain-model.md) (`provider.session_opened` and its envelope rule — the kind whose rows AC1 counts, owned and tested in the epic that owns the `Event` union), KAR-19.8 (`vendorSessionId`, `vendorSessionIdFor` and its `ResumeByReplay` rule — *"the attempt stays in the tuple"* — which this story is the application of, plus the argument-refusal reporting it extends), KAR-19.11 (`PROVIDER_SPECS`' declared argument forms and the fake vendor binaries that enforce them), KAR-19.3 (`live-chain.ts`'s `sessionFor` and `live-agents.ts`'s `structuredTurn`, the two functions this changes), KAR-19.9 (the bound and the classified retry this must not have to lean on), EPIC-05 KAR-05.5 (`ResumeNative` / `ResumeByReplay`, the strategies the derivation switches on), KAR-05.8 (the exec-shim adapter), EPIC-10 KAR-10.2 (`FramingSession.repair`, the replay path that opens a second process), EPIC-02 KAR-02.10 (the closed failure taxonomy this classifies into) |
+| **PRD**         | F1.2, F3.2, F3.4, F4.3, NF8, NF9, NF10                                                                                                                                                                                                                                                                                                   |
+| **Verified by** | EPIC-19-S84, EPIC-19-S85, EPIC-19-S86, EPIC-19-S87, EPIC-19-S88, EPIC-19-S89, EPIC-19-S90                                                                                                                                                                                                                                                 |
+
+**As** an operator whose run has been re-advanced — by a daemon that restarted, by a repaired framing
+turn, or by a wake that came round again — **I want** the next turn to open its own vendor session,
+**so that** a run does not wedge at framing or planning on an identifier DeFlow itself has already
+spent.
+
+**Observed on run `run_20260816T194933Z_839b9b`.** `claude` exited 1 inside `structuredTurn` during
+`compilePlanV1`, with:
+
+```
+Session ID 5f2b8935-25e5-5c1c-83c6-a97d1b151f08 is already in use
+```
+
+That value is not arbitrary and is worth deriving here, because it is the whole diagnosis:
+`vendorSessionId({ runId: 'run_20260816T194933Z_839b9b', nodeId: 'planner', attempt: 0 })` is exactly
+`5f2b8935-25e5-5c1c-83c6-a97d1b151f08`. The planner turn asked the vendor for its **first** session
+twice.
+
+**Claude Code's `--session-id` creates; it does not attach.** A second process presenting an id the
+first process already created is refused outright and exits 1. So the flag is single-use by
+construction, and any derivation that yields one id per `(run, turn)` for the life of a run is a
+derivation that can only ever work once. `live-chain.ts` has exactly that derivation:
+
+```ts
+const PRE_EXECUTION_ATTEMPT = 0;
+const sessionFor = (runId, turn) =>
+  vendorSessionId({ runId, nodeId: PRE_EXECUTION_NODES[turn], attempt: PRE_EXECUTION_ATTEMPT });
+```
+
+The pin was deliberate and its stated reason was continuity — *"a repair and a re-framed spec are
+continuations of the same conversation"*. That reason is sound for an adapter whose resume strategy
+is `ResumeNative`, and it is wrong here: the exec-shim path is `ResumeByReplay` — `replayOnlySession`
+says so in its own words, *"holds no session between turns; an answer is replayed into a fresh packet
+rather than steered"* — and `vendorSessionIdFor` already writes the rule this story is applying,
+that under `ResumeByReplay` *the attempt stays in the tuple* precisely so the two transcripts remain
+separately findable. Pinning the attempt at 0 opted the pre-execution turns out of the one rule that
+was written for them.
+
+**And the classification turns a one-line bug into a wedged run.** `rejectedArgument` never sees this
+failure: `REFUSAL_WORDS` matches `invalid|unknown|unrecognised|unsupported|unexpected|not a valid|must be`,
+and *"is already in use"* is none of those, so the refusal falls through to `agentExited`, which
+returns `class: 'transient'` — a standing instruction to try again with the identical id, every tick,
+for ever. This is the same defect KAR-19.8 AC6 fixed for *"Invalid session ID"* wearing the vendor's
+other sentence, and the fact that a second phrasing slipped past a matcher built for the first is the
+finding: the vocabulary has to be a table asserted over its entries, not a list that grows one
+incident at a time.
+
+**Two things must survive the fix.** The id stays **derived, not minted** — a `randomUUID()` per turn
+makes the vendor happy and makes every transcript under the vendor's projects directory unfindable
+from the ledger, which is the quiet half of the 2026-08-13 bug and is not allowed to come back. And
+`ResumeNative` stays pinned to attempt 0, because there the second attempt genuinely is resuming the
+first's session (KAR-19.8 AC4).
+
+**The kind AC1 counts is not this epic's to add** _(recorded 2026-08-23)_. AC1 needs the attempt to
+be a fact in the ledger, and the durable form of that is rows of an event kind — `provider.session_opened`,
+which did not exist. This epic's Out-of-scope forbids widening the `Event` union from here, and the
+first implementation of this story did it anyway. The kind, its schema, its `parseEvent` rule and its
+§9 documentation are [KAR-02.11](./EPIC-02-domain-model.md), added under
+[README §9](../README.md#9-changing-the-plan) in the epic that owns the union; this story consumes
+it and is listed in its `Depends on` above. What stays here is what this epic's diff is allowed to
+be: the count read at the call site, the attempt threaded into `sessionFor`, the row appended before
+the spawn, and the refusal vocabulary.
+
+**Acceptance criteria**
+
+1. No pre-execution turn presents a vendor session id that a previous process already created.
+   `sessionFor` takes the turn's **real** attempt rather than `PRE_EXECUTION_ATTEMPT = 0`, and the
+   attempt is the count of turns already recorded for that `(runId, pre-execution node)` **in the
+   ledger** — not a counter held in a daemon's memory, which a restart resets to the value that
+   collides.
+2. The derivation stays deterministic and ledger-derivable. Given only the ledger, the id any past
+   turn used is recomputable offline through `vendorSessionId` from `(runId, nodeId, attempt)`; no
+   clock, no environment variable and no unseeded random source is an input. A `randomUUID()` per
+   turn satisfies AC1 and fails this criterion, and the test that says so reads the ledger rather
+   than a snapshot.
+3. `replayOnlySession.repair` opens a **new** session rather than re-presenting the id of the turn it
+   is repairing. Its strategy is `ResumeByReplay`, whose rule is that the attempt stays in the tuple;
+   the repaired turn's id therefore differs from the original's, both are derivable from the ledger,
+   and neither transcript is overwritten by the other.
+4. `ResumeNative` is untouched. A node whose adapter resumes natively still derives every attempt's
+   id from attempt 0, so `--resume` still opens the session the first attempt created and KAR-19.8
+   AC4 still holds. A fix applied uniformly to both strategies is a failing implementation of this
+   criterion.
+5. The vendor's refusal to reuse a session id is reported as an argument refusal and classified
+   `permanent`. A shim child that exits non-zero having written that the id it was given is already
+   in use comes back through `rejectedArgument` / `argumentRefused` — carrying `--session-id`, the
+   value, and the child's stderr trimmed and not paraphrased — never through `agentExited`'s
+   `transient`. The terminal line names the flag and the value.
+6. The refusal vocabulary is a table, asserted over its entries. `REFUSAL_WORDS` covers the
+   "already in use" / "already exists" / "in use" family alongside the phrasings it has today, every
+   entry has a test row naming a real vendor sentence it must match, and a phrasing that matches
+   nothing is a failing row rather than a silent `transient`.
+7. The registry says which vendors' session-id flags can only **create**. `PROVIDER_SPECS`'
+   `shim.sessionId` entry carries that fact beside KAR-19.11's `form` and provenance note, the
+   derivation reads it rather than special-casing `claude` by name, and a table-driven guard covers
+   every entry that passes a session id — so `gemini` and `codex` are answered by the table and not
+   by the next by-hand run.
+8. DeFlow's own identifiers still name the run everywhere (KAR-19.8 AC3). The ledger, `deflow status`,
+   the attached view and both web surfaces still print `run_20260816T194933Z_839b9b`; the vendor id
+   is carried only in the session field the adapter records, now alongside the attempt it was derived
+   from, so a transcript is still findable from the ledger without a second lookup table.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail before writing the
+implementation.
+
+| #   | Level       | Test                                                                                                                                                                                        | Red when                                                                                                                                                       |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1   | unit        | `sessionFor` over ledgers holding zero, one and three prior planner turns for one run; assert three distinct ids, each equal to `vendorSessionId({ runId, nodeId: 'planner', attempt: n })` | The attempt is pinned to 0, so the second call derives `5f2b8935-25e5-5c1c-83c6-a97d1b151f08` again — the reported defect at the smallest level                |
+| 2   | integration | A fake vendor CLI that refuses a `--session-id` it has already created, as Claude Code does; dispatch the same pre-execution wake from two successive daemon lives over one ledger          | The second life presents the first life's id and exits 1, which is exactly how `run_20260816T194933Z_839b9b` wedged                                            |
+| 3   | unit        | The derivation's inputs asserted at source — no clock, no random source, no module-level counter — plus recomputing a past turn's id from the ledger alone                                  | The collision is fixed with `randomUUID()`, so every past turn's transcript becomes unfindable and nothing else notices                                        |
+| 4   | integration | `FramingSession.repair` on a live chain; assert the repair's child received a different session id from the turn it repairs, and that both ids are derivable from the ledger                | `repair` re-enters `structuredTurn` with the same options, so the replay presents the id the original turn spent — the second half of this defect              |
+| 5   | unit        | `vendorSessionIdFor` on the `ResumeNative` path over attempts 0–3; assert one id for all four                                                                                               | The fix is applied to both strategies, so attempt 2 `--resume`s into a transcript that does not contain attempt 1's work                                       |
+| 6   | integration | A shim child exiting 1 with `Session ID <uuid> is already in use`; assert the typed failure carries `--session-id`, the value, and `class: 'permanent'`                                     | `REFUSAL_WORDS` has no "in use" phrasing, so `rejectedArgument` returns `null`, `agentExited` classes it `transient`, and the tick retries the same id for ever |
+| 7   | unit        | A `Scenario Outline` over the refusal vocabulary and over `PROVIDER_SPECS`' session-id entries: each phrasing matched against a real vendor sentence, each entry's create-only fact declared | Only the two sentences that have failed in front of an operator are matched, and the third is `transient` again                                                |
+| 8   | integration | A real daemon whose planner turn hits the refusal; assert the run reaches a terminal state after **one** attempt, that `deflow run` exits non-zero, and that the ledger holds one `node.failed` naming the flag | The bound is doing the work the classification should: the run still ends, but only after the ceiling, with the ledger full of identical rows |
+
+**Notes / risks** — the tempting one-line fix is to drop `--session-id` and let the vendor allocate,
+which makes the error go away and takes the whole of KAR-19.8 with it: nothing DeFlow recorded would
+name the session, and the transcript on disk would be findable only by reading the vendor's own
+directory listing by hand. The second temptation is to make the attempt a field on an in-memory
+context object — cheap, correct in one daemon life, and wrong across the restart that produced this
+report, which is why AC1 names the ledger specifically. This story adds no e2e scenario: the
+"a command returned" property is already asserted at that level by EPIC-19-S58, and the facts here
+are about which bytes reach a child, which `integration` can see.
+
+---
+
 ## Risks
 
 | #   | Risk                                                                                                                                                                                                                                                | Mitigation                                                                                                                                                                                                                                                                                                                                                     |
 | --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| R1  | **~33 days is over the ~15-day guidance**, and this epic arrives after the plan believed M1 was nearly assembled. It has also grown three times from the same cause — each by-hand run finds the next layer of silence, and the last one found it one argument later.                                                                                                                                   | KAR-19.1 and KAR-19.2 alone (~5 days) already convert the reported failure from silence into a sentence, which is most of the operator harm. KAR-19.4's cost, gate and budget clauses can follow the completion clauses by a week if the schedule demands it — but KAR-19.5 cannot be the thing that slips, because it is the only story that stops this recurring, and KAR-19.7 (~3 days, added 2026-08-13) cannot slip either, because KAR-19.5 cannot be written without it. The three stories added later on 2026-08-13 (~7 days) are ordered by how much of the operator's afternoon each returns: KAR-19.9 first — an unbounded, silent retry is what turns any other defect into a lost afternoon — then KAR-19.8, then KAR-19.10. KAR-19.11 (~3 days, added the same evening) follows KAR-19.8 immediately, because it is the story that stops the growth: every addition so far has been one more argument found by one more real run, and an audit with a guard is the only version of that work that ends. |
+| R1  | **~33 days is over the ~15-day guidance**, and this epic arrives after the plan believed M1 was nearly assembled. It has also grown three times from the same cause — each by-hand run finds the next layer of silence, and the last one found it one argument later.                                                                                                                                   | KAR-19.1 and KAR-19.2 alone (~5 days) already convert the reported failure from silence into a sentence, which is most of the operator harm. KAR-19.4's cost, gate and budget clauses can follow the completion clauses by a week if the schedule demands it — but KAR-19.5 cannot be the thing that slips, because it is the only story that stops this recurring, and KAR-19.7 (~3 days, added 2026-08-13) cannot slip either, because KAR-19.5 cannot be written without it. The three stories added later on 2026-08-13 (~7 days) are ordered by how much of the operator's afternoon each returns: KAR-19.9 first — an unbounded, silent retry is what turns any other defect into a lost afternoon — then KAR-19.8, then KAR-19.10. KAR-19.11 (~3 days, added the same evening) follows KAR-19.8 immediately, because it is the story that stops the growth: every addition so far has been one more argument found by one more real run, and an audit with a guard is the only version of that work that ends. KAR-19.13 (~1 day, added 2026-08-16) is the smallest of them and is not optional: it is KAR-19.8's own rule applied to the three turns that were exempted from it, and until it lands any run re-advanced by a second process wedges on the same argument twice. |
 | R2  | **The temptation to write a second, simpler implementation** of framing or planning to get a run moving today.                                                                                                                                      | KAR-19.3 AC7 is a source guard, not a convention, and it is in the test plan before the wiring. One caller per step, asserted mechanically.                                                                                                                                                                                                                     |
 | R3  | **The wiring may reveal that two components' contracts do not actually meet** — a packet shape, a capability field, an id that framing mints and the planner expects differently. Integration is where that is discovered, by construction.         | Any mismatch is fixed **in the owning epic's code with its own test**, and the divergence is written back into the architecture doc in the same session (AR-6). This epic's diff stays calls and scheduling; a mismatch that needs a mechanism change is a story in the owning epic, recorded under [README §9](../README.md#9-changing-the-plan).             |
 | R4  | **A green smoke test that cannot go red** — the exact failure this epic exists to correct, reproduced one level up.                                                                                                                                 | KAR-19.5 AC4's sabotage table: every link cut in turn, every cut asserted to fail. A row that passes fails the story.                                                                                                                                                                                                                                          |
@@ -1950,6 +2121,7 @@ never *stuck*, not that answering is pleasant.
 | R9  | **KAR-19.10's per-route provider state touches shipped admission behaviour** — `providerVerdict`, `usableProviders`, `admitRun` and `doctor`'s report at once, on a path KAR-19.2 and KAR-19.7 both already assert against.                          | The direction is decided in writing in KAR-19.10 rather than in a commit, the two amendments it makes (KAR-19.2 AC1, KAR-18.8's vocabulary) are recorded in those stories' own files, and AC6's guard is a single producer for all three callers — so a future divergence fails a test instead of an afternoon. The alternative that is explicitly refused is a `claude` special case inside `chooseProvider`, which would put a vendor name in a file not allowed to have one. |
 | R10 | **KAR-19.9's fix can overshoot**: a bound applied too eagerly turns a flaky vendor into a failed run, which is worse than the bug for anyone on a rate-limited plan.                                                                                  | AC7 and its test are the counterweight and are written before the bound: two failures then a success must still reach `run.created`. The ceiling is the node's own `RetryPolicy` under KAR-06.5 — one policy, tunable in a plan — and AC2's source guard fails the day a second one appears in `drive.ts`.                                                                                                                                                                    |
 | R11 | **KAR-19.11's audit can be performed as a reading exercise and produce nothing** — every argument re-read against a `--help` page, a note that it looks right, and the next real run failing on the argument nobody executed. The inverse risk is the fix itself: putting a whole schema document on the command line makes argv large, and large argv fails differently on each platform.                            | The audit's output is a **column in `PROVIDER_SPECS`** — a declared form and a provenance note per argument, with `read from --help`, `decoded from the bundle` and `executed` written as the three different claims they are — and AC4's guard fails the day an argument has no form. The argv-size half is bounded by AC8: one argv element, the document reduced to its schema id wherever argv is logged, and a typed construction-time refusal naming the platform limit rather than an `E2BIG` from `spawn`.                                                                     |
+| R12 | **KAR-19.13's fix can overshoot in either direction.** Made too broadly it becomes "a fresh id per turn everywhere", which satisfies the vendor, breaks `ResumeNative`'s `--resume` and makes every recorded transcript unfindable from the ledger — the quiet half of the 2026-08-13 bug, returning as the fix for the 2026-08-16 one. Made too narrowly it becomes a `claude` special case, in a file that is not allowed to name a vendor.                                                                          | AC4 is the counterweight and its test is written before the change: on the native path, attempts 0–3 must still derive one id. The narrow failure is bounded by AC7 — the create-only fact is a **declaration in `PROVIDER_SPECS`** beside KAR-19.11's form and provenance columns, read by the derivation, with a table-driven guard over every entry that passes a session id. And AC2 keeps the value derived rather than minted, asserted by recomputing a past turn's id from the ledger alone rather than from a snapshot.                                                                             |
 | R7  | **Fixtures recorded from the pre-fix system may encode the broken shape**, so a projection tuned to them could disagree with a live run.                                                                                                            | The smoke test never reads a fixture. Once it passes, re-recording [03 §6.2](../../03-local-development.md)'s fixtures from real runs is the immediate follow-up, and any projection that changes as a result is a finding rather than a surprise.                                                                                                              |
 
 ---

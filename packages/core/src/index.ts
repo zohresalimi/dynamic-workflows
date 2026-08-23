@@ -454,7 +454,9 @@ export {
 } from './event-payloads.ts';
 // KAR-02.7 — the envelope and the total, forward-compatible reader.
 export type { Event, EventEnvelope, ParseEventResult } from './events.ts';
-export { EventEnvelopeSchema, parseEvent } from './events.ts';
+// KAR-02.11 — the payload keys that restate an envelope field, so a writer can
+// read the rule off the same table `parseEvent` enforces it from.
+export { EVENT_ENVELOPE_ECHOES, EventEnvelopeSchema, parseEvent } from './events.ts';
 // KAR-02.5 — Fact, Provenance and the blackboard vocabulary.
 export type { Confidence, Fact, FactKind, Provenance } from './fact.ts';
 export {

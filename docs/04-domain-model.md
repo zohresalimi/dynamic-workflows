@@ -839,6 +839,7 @@ export type EventEnvelope<K extends string, P> = {
 | `budget.ceiling.set`                        | `{ scope: 'node' \| 'run'; node?; costUsd: number \| null; wallclockMs: number \| null; source: 'request' \| 'config' \| 'operator'; hash }` | F4.6 — the ceiling in force, **pinned in the log**. Appended beside `run.created` from `POST /api/runs`'s `budget` over `.DeFlow/config.yaml`'s defaults, and again with `source: 'operator'` when a paused run's ceiling is raised. An event rather than a config read per tick for the reason pause is an event: a file can be edited mid-run, and a raised ceiling has to survive the restart that follows the pause it answered |
 | `provider.probed`                           | `{ provider; version; capsJson: unknown; binarySha256: string }`                         | F3.4/F3.5 — capabilities are derived, never hardcoded                                                |
 | `provider.rate_limited`                     | `{ provider; resetsAt?: number; raw: unknown }`                                          | parsed from Claude Code's `rate_limit_event` frame                                                   |
+| `provider.session_opened`                   | `{ node; attempt; provider; session: { id: string; origin: 'minted' \| 'session/new' } }` | F3.2/F4.3 — KAR-02.11, for KAR-19.13: the vendor session DeFlow opened for one turn of a **pre-execution** node, journaled before the child is spawned. The count of these rows for a `(run, node)` is the next turn's `attempt`, which is what makes the derivation survive a daemon restart — a counter in a process resets to the value that collides, and on 2026-08-16 that is exactly how a run wedged on `Session ID … is already in use`. `attempt` sits beside `session.id` so any past turn's id is recomputable offline through `vendorSessionId(runId, node, attempt)`, which is what stops a `randomUUID()` "fix" that satisfies the vendor and makes every transcript unfindable from the ledger. Not a `node.started`: a pre-execution turn is not a plan node, and the reducer must not leave `framing` permanently `running`. Its envelope's `nodeId` and `attempt` are **required**, and must equal the payload's `node` and `attempt` — see [§9.3](#93-a-payload-that-restates-an-envelope-field-must-restate-it-correctly) |
 | `export.blocked`                            | `{ target: 'report' \| 'hub'; reason: 'redaction-failed' \| 'findings'; count: number }` | F5.9 — redaction **fails closed**                                                                    |
 
 ### 9.1 `context.compacted` carries a fidelity discriminator
@@ -895,6 +896,34 @@ not a new `v`.
 Plan versioning needs no equivalent machinery: plans are immutable content-addressed documents, so a
 replan writes a new row and a `plan.patched` event. That is the second half of the two-layer
 versioning story, and it is free.
+
+### 9.3 A payload that restates an envelope field must restate it correctly
+
+`nodeId` and `attempt` are optional on the envelope, because most events belong to no node. A few
+kinds carry the same facts in their payload as well, and for those the two must agree — and the
+envelope's copy must be present. The correspondence is a table read by `parseEvent`, not a check
+written per kind:
+
+```ts
+export const EVENT_ENVELOPE_ECHOES = {
+  'provider.session_opened': { node: 'nodeId', attempt: 'attempt' },
+} as const;
+```
+
+The reason is that an envelope field is a **column** and a payload field is JSON. A kind whose rows
+are counted — `count(provider.session_opened)` for a `(run, node)` is the attempt the next
+pre-execution turn derives its vendor session from — is counted with `WHERE node_id = ?` over an
+index, so an event written without an envelope `nodeId` counts zero for ever: the next turn
+re-derives the id the vendor already created, and Claude Code refuses it with
+`Session ID … is already in use`. That is how a run wedged at plan compilation on 2026-08-16. A row
+whose envelope says `planner` while its payload says `framing` is worse than either mistake alone,
+because the count sees one turn and the offline recomputation of
+`vendorSessionId(runId, node, attempt)` sees another.
+
+A mismatch is reported as `invalid-payload` with both values named, never thrown — and it is decided
+**after** `unknown-kind` and `future-version`, so a downgraded daemon still reports "newer than me"
+rather than judging an envelope it has never heard of. A kind absent from the table is parsed exactly
+as it was before the rule existed.
 
 ---
 
