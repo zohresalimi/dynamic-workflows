@@ -93,7 +93,13 @@ export interface RunExecutionContext {
   readonly tickStepMs?: number | undefined;
   /** Real milliseconds between ticks. Never faked: children are alive. */
   readonly tickMs?: number | undefined;
-  /** Real-time budget for one dispatch. Exceeding it is a wedge. */
+  /**
+   * KAR-23.12 — how long the loop may make **no progress** before it calls
+   * itself wedged: this run's log standing still with nothing in flight. Not a
+   * ceiling on how long the run may take, and not one on how long a node may
+   * work — a live child is the stall detector's business and the cancel
+   * ladder's, never the loop's.
+   */
   readonly budgetMs?: number | undefined;
 }
 

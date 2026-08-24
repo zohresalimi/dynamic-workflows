@@ -17,9 +17,25 @@
  *    stopped.
  * 3. **The only thing it decides for itself is when the run is over**, because
  *    `decide()` does not emit `run.completed` and no epic has given that job to
- *    anything else yet. Nothing to do and nothing in flight means the run is
- *    over: every active node completed is `succeeded`, anything else is
- *    `failed`.
+ *    anything else yet. Nothing to do, nothing in flight **and nothing the
+ *    ledger says is running** means the run is over: every active node
+ *    completed is `succeeded`, anything else is `failed`.
+ *
+ * That third clause is KAR-23.12 and it is worth stating why it is the ledger
+ * rather than the `inflight` set. The set is about promises *this call* is
+ * holding; it is empty on every re-entry. On 2026-08-24 a whole-run deadline
+ * expired mid-node, `drive.ts` logged and abandoned the promise, the orphan
+ * kept appending `node.progress`, the head moved, and the next tick re-entered
+ * with a fresh empty set — where "no commands and nothing in flight" read as
+ * "the run is over" and `run.aborted { failed }` was written over a node that
+ * completed fifteen seconds later. The projection is the run's own record and
+ * it survives the re-entry, so it is what the verdict is guarded on.
+ *
+ * The remaining hole is honest and worth naming: a performer that returns
+ * without appending a terminal event leaves its node `running` for this whole
+ * daemon life, and the run then neither ends nor progresses. That is what
+ * `run.stalled` is for — loud, in the ledger, and strictly better than a silent
+ * `run.aborted { failed }` on a run that was working.
  *
  * `now` arrives through the injected `Clock`, so a spec drives the scheduler's
  * view of time by hand and a six-hour gate is exercised in microseconds. Only
@@ -55,6 +71,7 @@ import {
   headSeq,
   markEffectFailed,
   readEffect,
+  runHeadSeq,
   scheduleWakeIfChanged,
 } from '@DeFlow/ledger';
 import { systemClock } from '../clock.ts';
@@ -139,8 +156,29 @@ export interface RunExecutorOptions {
    * timer around one deadlocks (docs/14-testing-strategy.md §8).
    */
   readonly sleep?: (ms: number) => Promise<void>;
-  /** Real-time budget. Exceeding it is a wedge, and a wedge is a failure. */
+  /**
+   * How long this loop may make **no progress** before it calls itself wedged.
+   *
+   * Progress is the run's own log moving, or anything being in flight — so a
+   * node that takes six hours is not a wedge, and a loop re-issuing the same
+   * command for ever with nothing running is. KAR-23.12: measuring the *length
+   * of the run* instead is what concluded `run_20260824T143505Z_3a7365` as
+   * failed while it was working, because the only thing this loop can do about
+   * a live child is abandon the promise holding it.
+   */
   readonly budgetMs?: number;
+  /**
+   * The wall clock the no-progress budget is measured on. Defaults to
+   * `systemClock`.
+   *
+   * Deliberately **not** `options.clock`. That is the scheduler's injected
+   * clock, which a spec advances by hand and a live route pins with
+   * `tickStepMs: 0` — a budget measured on it would either never come due or
+   * come due instantly. A port rather than a bare `Date.now()` so that time
+   * still enters the daemon through the `Clock` interface (NF9) and so that a
+   * spec can drive the budget itself.
+   */
+  readonly wallClock?: Clock;
 }
 
 export interface RunExecutionResult {
@@ -186,6 +224,22 @@ function advance(clock: Clock, ms: number): void {
   if (typeof advancer === 'function') advancer.call(clock, ms);
 }
 
+/**
+ * KAR-23.12 — the active nodes **the ledger** says are still running.
+ *
+ * The `inflight` set below is this process's opinion: it is about promises this
+ * loop is holding, and it is emptied every time the loop is re-entered. The
+ * projection is the run's own record, it survives the re-entry, and it is the
+ * only one of the two that can answer *"is anything of this run still
+ * running?"* after a dispatch was abandoned.
+ */
+function runningNodes(state: RunState): readonly NodeId[] {
+  return (state.plan?.nodes ?? [])
+    .filter((node) => node.lifecycle === 'active')
+    .filter((node) => state.nodes[node.id]?.status === 'running')
+    .map((node) => node.id);
+}
+
 /** The failure a finished run ended on, when it ended on one. */
 function endingFailure(state: RunState): NodeFailure | null {
   for (const node of Object.values(state.nodes)) {
@@ -221,9 +275,13 @@ export async function executeRun(options: RunExecutorOptions): Promise<RunExecut
   const admitted = new Set<string>();
   const thrown: unknown[] = [];
   const pause = options.sleep ?? ((ms: number): Promise<void> => systemClock.sleep(ms));
-  const deadline = Date.now() + (options.budgetMs ?? 60_000);
+  const wall = options.wallClock ?? systemClock;
+  const budgetMs = options.budgetMs ?? 60_000;
   const tickStep = options.tickStepMs ?? 1_000;
   let ticks = 0;
+  /** The last instant this run made progress — see `budgetMs`. */
+  let lastProgressAt = wall.now();
+  let lastHead = runHeadSeq(db, runId);
 
   const append = (...drafts: readonly Omit<EventDraft, 'runId' | 'ts' | 'epoch'>[]): void => {
     if (drafts.length === 0) return;
@@ -274,6 +332,27 @@ export async function executeRun(options: RunExecutorOptions): Promise<RunExecut
       if (HALTED_STATUSES.includes(state.status)) {
         return { state, ticks, started, failure: endingFailure(state) };
       }
+      // KAR-23.12 — a node this loop is not holding a promise for is still a
+      // node this run is running, and an empty `inflight` set is not evidence
+      // to the contrary: the set is emptied every time the loop is re-entered.
+      //
+      // Returning is the third case of the shape `drive.ts`'s `settledAtHead`
+      // already documents, beside the budget ceiling and the open human gate:
+      // the run is not finished, so it must stay drivable, and nothing has
+      // happened since this loop last looked, so there is nothing new to
+      // decide. Whoever is running that node will append its terminal event,
+      // the head will move, and the run is picked up again — the incident's
+      // own `node.completed` would have brought it back fifteen seconds later
+      // to write `run.completed { succeeded }`.
+      //
+      // A daemon that is *gone* is the other case, and it is not this loop's:
+      // `recover()` step 5 (`reclaim-locks`) concludes any node left `running`
+      // by a previous life with a `transient` failure, and it runs at step 5
+      // of 8 with `start-ticker` at step 8 — so by the time this loop can run
+      // again the node is `awaiting-retry` or `failed`, never `running`.
+      if (runningNodes(state).length > 0) {
+        return { state, ticks, started, failure: endingFailure(state) };
+      }
       concludeRun(state);
       continue;
     }
@@ -291,9 +370,25 @@ export async function executeRun(options: RunExecutorOptions): Promise<RunExecut
       return { state, ticks, started, failure: endingFailure(state) };
     }
 
-    if (Date.now() > deadline) {
+    // KAR-23.12 — progress, as the two things that can be one: this run's log
+    // moved, or something is in flight.
+    const head = runHeadSeq(db, runId);
+    if (head !== lastHead || inflight.size > 0) {
+      lastHead = head;
+      lastProgressAt = wall.now();
+    }
+
+    // A live child is not a wedge. A node that runs for six hours is the stall
+    // detector's business (`run.stalled`) and the operator's cancel ladder's —
+    // never this loop's, because the only way this loop can act on one is to
+    // abandon a promise it is holding, and that is exactly how
+    // `run_20260824T143505Z_3a7365` came to be concluded as failed while it
+    // was working. What is left is the wedge this budget was always for: a
+    // loop re-issuing commands that change nothing, with nothing running.
+    const idleMs = wall.now() - lastProgressAt;
+    if (inflight.size === 0 && idleMs > budgetMs) {
       throw new Error(
-        `the run wedged: ${ticks} ticks, ${inflight.size} in flight, last commands ` +
+        `the run wedged: ${ticks} ticks, no progress for ${String(idleMs)}ms, last commands ` +
           JSON.stringify(commands),
       );
     }
@@ -302,7 +397,20 @@ export async function executeRun(options: RunExecutorOptions): Promise<RunExecut
     await pause(options.tickMs ?? 5);
   }
 
+  /**
+   * The one thing this loop decides for itself: that the run is over.
+   *
+   * KAR-23.12 — it refuses rather than trusting its caller, because the
+   * invariant belongs to the function that writes the verdict. A `run.aborted`
+   * appended over a node that is still working is not a recoverable mistake:
+   * it is a healthy run recorded as a failed one, and every reader downstream
+   * believes it.
+   */
   function concludeRun(state: RunState): void {
+    const running = runningNodes(state);
+    if (running.length > 0) {
+      throw new Error(`run ${runId} cannot be concluded: ${running.join(', ')} is still running`);
+    }
     const active = (state.plan?.nodes ?? []).filter((node) => node.lifecycle === 'active');
     const done = active.every((node) => state.nodes[node.id]?.status === 'completed');
     append({

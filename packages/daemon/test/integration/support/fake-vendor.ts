@@ -33,6 +33,18 @@ export interface FakeVendorOptions {
   readonly name?: string;
   /** A scenario name, a path, or an inline JSON document — `DeFlow_FAKE_SCENARIO`. */
   readonly scenario: string;
+  /**
+   * A scenario **file** for `deflow-mock-agent` — `DeFlow_MOCK_SCENARIO`.
+   *
+   * A different variable from `scenario` because it feeds a different binary:
+   * the testkit's exec-shim fake reads `DeFlow_FAKE_SCENARIO` and the ACP mock
+   * agent reads this one, and until KAR-23.10 a wrapper around the mock could
+   * only ever serve its default conversation. A **path** rather than a
+   * document, which is what the mock accepts — and which is also what lets a
+   * spec write the file *after* the wrapper exists, once it knows the run id
+   * the worktree path is derived from.
+   */
+  readonly mockScenarioPath?: string;
   /** Which vendor's stream dialect the fake speaks. */
   readonly dialect?: 'claude-stream-json' | 'codex-jsonl' | 'copilot-json';
   /** Seeds every uuid the fake mints, so a transcript replays byte for byte. */
@@ -71,6 +83,9 @@ export async function installFakeVendorCli(options: FakeVendorOptions): Promise<
     `DeFlow_FAKE_DIALECT=${shellQuote(options.dialect ?? 'claude-stream-json')}`,
     `DeFlow_FAKE_SCENARIO=${shellQuote(options.scenario)}`,
     `DeFlow_FAKE_SEED=${shellQuote(options.seed ?? '42')}`,
+    ...(options.mockScenarioPath === undefined
+      ? []
+      : [`DeFlow_MOCK_SCENARIO=${shellQuote(options.mockScenarioPath)}`]),
     ...(options.nowMs === undefined
       ? []
       : [`DeFlow_FAKE_NOW=${shellQuote(String(options.nowMs))}`]),

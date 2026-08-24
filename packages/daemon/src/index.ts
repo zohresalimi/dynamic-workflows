@@ -525,6 +525,11 @@ export {
 // of the composition-root binding whose absence was the 2026-08-12 failure.
 export type { LiveExecutionOptions } from './pipeline/live-nodes.ts';
 export { createLiveRunExecution } from './pipeline/live-nodes.ts';
+// KAR-23.10 — the composition root for one node attempt's three mediation
+// fronts, and the named chokepoint `test/fronts-are-wired.test.ts` scans: a
+// front DeFlow advertises is a front DeFlow serves.
+export type { NodeMediationInput } from './pipeline/node-mediation.ts';
+export { nodeClientHandlers, UNDECLARED_COMMANDS } from './pipeline/node-mediation.ts';
 // KAR-19.3 — the live chain: the one shipped caller of `runFramingInterview`,
 // `runReconNode` and `compilePlanV1`, and the resolver `deflow up` binds it to.
 export type {

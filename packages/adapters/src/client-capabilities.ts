@@ -33,6 +33,43 @@ export const CLIENT_CAPABILITIES: acp.ClientCapabilities = Object.freeze({
 });
 
 /**
+ * KAR-23.10 — the client methods `CLIENT_CAPABILITIES` **obliges** DeFlow to
+ * answer.
+ *
+ * The derivation of the paragraph above, so the obligation is data rather than
+ * an intention. `session/request_permission` is unconditional: ACP requires it
+ * of every client and there is no capability to advertise it with. The rest are
+ * owed only because the handshake claimed them — which is exactly the promise
+ * that went unkept on 2026-08-24, when DeFlow told every agent it served seven
+ * methods and wired none of them, and four implementation nodes spent
+ * twenty-two minutes inferring they were read-only from a `-32601`.
+ *
+ * A function over the capabilities rather than a second frozen list, because a
+ * second list is how the advertisement and the obligation drift apart. Drop
+ * `terminal` from the handshake and the five `terminal/*` methods stop being
+ * owed here on the same edit.
+ */
+export function requiredClientMethods(
+  capabilities: acp.ClientCapabilities = CLIENT_CAPABILITIES,
+): readonly string[] {
+  const fs = capabilities.fs;
+  return [
+    'session/request_permission',
+    ...(fs?.readTextFile === true ? ['fs/read_text_file'] : []),
+    ...(fs?.writeTextFile === true ? ['fs/write_text_file'] : []),
+    ...(capabilities.terminal === true
+      ? [
+          'terminal/create',
+          'terminal/output',
+          'terminal/wait_for_exit',
+          'terminal/kill',
+          'terminal/release',
+        ]
+      : []),
+  ];
+}
+
+/**
  * Who the agent thinks it is talking to. Vendors put this in their own logs
  * and in their telemetry, so it is DeFlow's name and DeFlow's version — not
  * the SDK's, which is an artefact version and not a compatibility signal
