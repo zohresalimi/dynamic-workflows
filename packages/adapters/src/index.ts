@@ -414,10 +414,17 @@ export type { ShimNodeOutcome, ShimNodeRequest, ShimPorts } from './run-shim-nod
 export { runShimNode, shimCapabilityRow, WAKE_REASON_QUOTA } from './run-shim-node.ts';
 // KAR-08.5 — the node's sandbox policy, on the argv. D12: DeFlow owns policy,
 // the vendor owns enforcement, and nothing here opens a user config directory.
-export type { SandboxedShimPlan, SandboxInvocation } from './sandbox.ts';
+export type {
+  SandboxedCommand,
+  SandboxedCommandInput,
+  SandboxedShimPlan,
+  SandboxInvocation,
+} from './sandbox.ts';
 export {
   checkSandboxDependencies,
+  resolveSandboxRuntime,
   SANDBOX_RUNTIME_SETTINGS_FILE,
+  sandboxedCommand,
   sandboxedShimPlan,
 } from './sandbox.ts';
 // KAR-08.7 AC3, AC5 — the completion-time scope backstop: the one place a node

@@ -26,6 +26,7 @@ import { PlanGraphSchema } from '../src/plan-graph.ts';
 import { PlanPatchSchema } from '../src/plan-patch.ts';
 import { ReconFactValueSchema, ReconSurveySchema } from '../src/recon.ts';
 import { TaskSpecSchema } from '../src/task-spec.ts';
+import { ToolResultSchema } from '../src/tool-result.ts';
 import {
   FindingSchema,
   FindingV2Schema,
@@ -55,6 +56,7 @@ const CONFORMING: Record<string, string> = {
     repoRoot,
     'packages/core/test/fixtures/specs/vue3-migration.framed.json',
   ),
+  'DeFlow.toolresult.v1': join(corpus, 'DeFlow.toolresult.v1.valid.json'),
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
   'DeFlow.verdict.v2': join(corpus, 'DeFlow.verdict.v2.valid.json'),
   'DeFlow.verdict.v3': join(corpus, 'DeFlow.verdict.v3.valid.json'),
@@ -73,6 +75,7 @@ const ZOD: Record<string, z.ZodType> = {
   'DeFlow.reconsurvey.v1': ReconSurveySchema,
   'DeFlow.taskspec.v1': TaskSpecSchema,
   'DeFlow.taskspecdraft.v1': TaskSpecDraftSchema,
+  'DeFlow.toolresult.v1': ToolResultSchema,
   'DeFlow.verdict.v1': VerdictSchema,
   'DeFlow.verdict.v2': VerdictV2Schema,
   'DeFlow.verdict.v3': VerdictV3Schema,

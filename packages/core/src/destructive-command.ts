@@ -36,6 +36,7 @@
  *
  * Verifies: EPIC-08-S14 · AC3, AC4, AC5
  */
+import { splitCommandLine } from './command-line.ts';
 import type { PermissionReason } from './permission.ts';
 import { binaryName, hostOf, isLoopback, pathDepth, pathIsInside, resolvePosix } from './scope.ts';
 
@@ -80,6 +81,11 @@ export const DESTRUCTIVE_COMMANDS: readonly {
 
 /** The database clients §10.4 names, and the flags each spells its host with. */
 const DATABASE_CLIENTS: readonly string[] = ['psql', 'mysql'];
+
+/** What a rule answers: the reason detail to gate on, or `null` for "not this
+ * one". Separate from {@link DestructiveReason} so a rule cannot invent a code
+ * — every gate in this module is a `destructive-command`. */
+type CommandRule = (args: readonly string[], context: CommandContext) => string | null;
 
 // ── argv shapes ──────────────────────────────────────────────────────────────
 
@@ -194,6 +200,78 @@ function scrubbedVariable(words: readonly string[], scrubbed: readonly string[])
   return null;
 }
 
+// ── the binaries judged by a written-out rule ────────────────────────────────
+
+/** `git`'s two rules, in the order the sharper one wins. */
+function gitRule(args: readonly string[], context: CommandContext): string | null {
+  if (gitPushForce(args)) return 'git-push-force';
+  if (gitResetHardOutside(args, context)) return 'git-reset-hard';
+  return null;
+}
+
+/**
+ * The binaries whose rule is written out above rather than tabulated in
+ * {@link DESTRUCTIVE_COMMANDS} — `git`, `rm` and the database clients.
+ *
+ * A table and not a chain of `if`s, so that *both* readers of this module can
+ * derive the set of binaries they must route from one place. KAR-23.9 shipped
+ * with the second reader ({@link destructiveShellLine}) deriving that set from
+ * `DESTRUCTIVE_COMMANDS` alone, which exempted exactly these four from the
+ * line scan: `run: 'git push --force origin main'` walked past the rule
+ * written to catch it. A second hand-copied list is how that happens, so there
+ * is no second list.
+ */
+const RULED_COMMANDS: readonly { readonly binary: string; readonly rule: CommandRule }[] = [
+  { binary: 'git', rule: gitRule },
+  {
+    binary: 'rm',
+    rule: (args, context) => (removesShallowTree(args, context) ? 'rm-recursive-shallow' : null),
+  },
+  ...DATABASE_CLIENTS.map((binary) => ({
+    binary,
+    rule: (args: readonly string[]) => (databaseHost(args) !== null ? `${binary}-remote` : null),
+  })),
+];
+
+/** Every binary any rule in this module has something to say about. */
+const GUARDED_BINARIES: ReadonlySet<string> = new Set([
+  ...DESTRUCTIVE_COMMANDS.map((entry) => entry.binary),
+  ...RULED_COMMANDS.map((entry) => entry.binary),
+]);
+
+/**
+ * The words a shell reads as "the command before me ended here".
+ *
+ * Not an operator parser and not a step towards one: an unspaced `a;b` stays
+ * one word, and the only consequence is that the scan judges more of the line
+ * than it strictly needs to — the safe direction. The point of splitting at
+ * all is the opposite one: `rm -rf ./dist && ls /usr` must not be read as a
+ * removal of `/usr`, because a false gate on an everyday build verb is how the
+ * §10.5 gate budget gets blown and the operator learns to approve everything.
+ */
+const COMMAND_SEPARATORS: ReadonlySet<string> = new Set(['&&', '||', ';', '|', '&']);
+
+/**
+ * A shell line's words, cut into one list per command.
+ *
+ * A `run:` is routinely a YAML block scalar, so a newline ends a command here
+ * exactly as `;` does — and `splitCommandLine` is only quote-aware, so the
+ * newlines have to be cut before it sees them or two commands become one.
+ * A trailing `\` is the one newline that does *not* end a command, and joining
+ * those first is what keeps a continued `terraform \⏎ apply` one command.
+ */
+function shellSegments(line: string): readonly (readonly string[])[] {
+  const segments: string[][] = [];
+  for (const physical of line.replace(/\\\r?\n/g, ' ').split(/[\r\n]+/)) {
+    segments.push([]);
+    for (const word of splitCommandLine(physical)) {
+      if (COMMAND_SEPARATORS.has(word)) segments.push([]);
+      else segments[segments.length - 1]?.push(word);
+    }
+  }
+  return segments;
+}
+
 // ── the layer ────────────────────────────────────────────────────────────────
 
 /**
@@ -219,17 +297,59 @@ export function destructiveCommand(
     if (verb !== undefined) return gate([binary, ...verb].join('-'));
   }
 
-  if (binary === 'git') {
-    if (gitPushForce(args)) return gate('git-push-force');
-    if (gitResetHardOutside(args, context)) return gate('git-reset-hard');
-  }
-
-  if (binary === 'rm' && removesShallowTree(args, context)) return gate('rm-recursive-shallow');
-
-  if (DATABASE_CLIENTS.includes(binary) && databaseHost(args) !== null) {
-    return gate(`${binary}-remote`);
+  for (const entry of RULED_COMMANDS) {
+    if (entry.binary !== binary) continue;
+    const detail = entry.rule(args, context);
+    if (detail !== null) return gate(detail);
   }
 
   const variable = scrubbedVariable([command, ...args], context.scrubbedEnv);
   return variable === null ? null : { code: 'scrubbed-env', detail: variable };
+}
+
+/**
+ * KAR-23.9 — the same layer, applied to a whole *line* that will be handed to
+ * a shell.
+ *
+ * A `tool` node's `run` is one string DeFlow gives to `/bin/sh -c`, so there is
+ * no `(command, args)` pair to judge until somebody decides how to read it.
+ * This function decides once, in two passes, and **only ever adds refusals**:
+ *
+ *  1. The documented reading (the module note above): a command that needs a
+ *     shell is judged as `sh`. That is what actually runs, so it is judged.
+ *  2. A conservative token scan. Every word of the line that names a binary
+ *     any rule in this module knows — {@link GUARDED_BINARIES}, derived from
+ *     both rule tables and never hand-copied — is judged with the words that
+ *     follow it in its own segment, so `git add -A && terraform apply` is
+ *     refused even though the *command* being spawned is `sh`.
+ *
+ * **The second pass is not a decision procedure, and must never be mistaken
+ * for one.** §10.4 says static analysis of shell strings is undecidable in
+ * those words: `$X`, an alias, a here-doc and a base64 pipe all walk straight
+ * past it. It buys defence in depth and nothing else. What actually confines a
+ * plan script is the sandbox the caller wraps it in, never this parse — and a
+ * caller that read this as "the line was checked, so the shell is safe" would
+ * have inverted the whole argument.
+ *
+ * What it must not do is *miss the plain spelling of a rule it already owns*.
+ * The sandbox is no backstop for `git push --force`: it gates by write-root
+ * and by domain, and a push to an already allowed remote is indistinguishable
+ * to it from a fetch.
+ */
+export function destructiveShellLine(
+  line: string,
+  context: CommandContext,
+  shell = '/bin/sh',
+): DestructiveReason | null {
+  const asShell = destructiveCommand(shell, ['-c', line], context);
+  if (asShell !== null) return asShell;
+
+  for (const segment of shellSegments(line)) {
+    for (const [at, word] of segment.entries()) {
+      if (!GUARDED_BINARIES.has(binaryName(word))) continue;
+      const verdict = destructiveCommand(word, segment.slice(at + 1), context);
+      if (verdict !== null) return verdict;
+    }
+  }
+  return null;
 }

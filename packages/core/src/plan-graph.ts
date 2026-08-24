@@ -228,6 +228,20 @@ export const AgentNodeSchema = z.strictObject({
   resume: z.enum(['native-if-available', 'always-replay']),
 });
 
+/**
+ * The three shapes a `tool` node's work can take, in the order `ToolNodeSchema`
+ * introduces them.
+ *
+ * Exported because KAR-23.9 needs the vocabulary in two more places — the
+ * daemon's `PERFORMABLE_TOOL_KINDS` and the plan-time diagnostic that refuses
+ * the rest — and a caller enumerating them must read the set from here rather
+ * than restate it. `packages/core/test/plan-graph-fixture.test.ts` holds it to
+ * the union by parsing, so a fourth kind cannot arrive without appearing here.
+ */
+export const TOOL_KINDS = ['script', 'mcp', 'http'] as const;
+
+export type ToolKind = (typeof TOOL_KINDS)[number];
+
 export const ToolNodeSchema = z.strictObject({
   ...nodeBaseShape,
   type: z.literal('tool'),

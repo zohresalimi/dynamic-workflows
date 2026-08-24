@@ -101,7 +101,10 @@ suite('EPIC-11-S5 — a failing plan version is an event, not an exception', () 
     // refuses and `CRITERION_UNCOVERED` names the document rather than a node.
     // v3 since KAR-12.4: `diagnostics[].code` widened by two members,
     // `CRITERION_UNVERIFIABLE_NO_REASON` and `COVERED_BY_GATES_MISMATCH`.
-    expect(EVENT_SCHEMAS['plan.validation_failed'].v).toBe(3);
+    // v4 since KAR-23.9: two more, `NODE_TYPE_UNPERFORMABLE` and
+    // `TOOL_KIND_UNPERFORMABLE` — the check that was missing on 2026-08-24,
+    // when a plan validated with seven nodes nothing could perform.
+    expect(EVENT_SCHEMAS['plan.validation_failed'].v).toBe(4);
   });
 
   it('accepts the diagnostics verbatim, with the version and the rejected hash', () => {

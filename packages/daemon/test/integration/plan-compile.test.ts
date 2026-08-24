@@ -39,6 +39,13 @@ import { loadSchemaDirectory } from '../../src/schema-store.ts';
 /** The repository's own emitted documents — the bytes `deflow init` copies. */
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 
+/** The one plan document the schema and the content-addressing both agree on.
+ * Content-pinned by `packages/core/test/plan-hash-golden.test.ts`, so it is read
+ * here and never rewritten. */
+const sevenTypesFixture = fileURLToPath(
+  new URL('../../../core/test/fixtures/plans/seven-types.json', import.meta.url),
+);
+
 const RUN: RunId = RunIdSchema.parse('run_20260807T101500Z_ac1101');
 const PLANNER: NodeId = NodeIdSchema.parse('planner');
 const T0 = 1_754_380_800_000;
@@ -303,25 +310,41 @@ suite('EPIC-11-S1 — three inputs compile to PlanGraph v1', () => {
     }
   });
 
-  it('AC7 — a graph using all seven node types round-trips', async ({ tmp }) => {
+  it('AC7 — the four node types this daemon can admit round-trip', async ({ tmp }) => {
     const db = openLedger(tmp);
     try {
       seedCapabilities(db);
-      const fixture = fileURLToPath(
-        new URL('../../../core/test/fixtures/plans/seven-types.json', import.meta.url),
+      const seven: Record<string, unknown> = JSON.parse(readFileSync(sevenTypesFixture, 'utf8'));
+      // Two re-pointings on the *returned* document, neither of which touches
+      // the fixture — it is content-pinned by
+      // `packages/core/test/plan-hash-golden.test.ts` and must not move.
+      //
+      // The first is KAR-11.1's: the fixture names `claude-code`, which this
+      // machine has not probed, so validation would (correctly) refuse it with
+      // PROVIDER_NOT_PROBED.
+      //
+      // The second is KAR-23.9's, and it is the honest half of what this test
+      // now claims. The fixture really does carry all seven types — that is
+      // AC7's *schema* claim, still pinned in
+      // `packages/core/test/plan-graph-fixture.test.ts` — but three of them are
+      // types no daemon composes a performer for, so a plan carrying one is now
+      // refused at compile time. The case below is the other side of the same
+      // coin.
+      const admissible = (seven.nodes as Record<string, unknown>[]).filter((node) =>
+        ['agent', 'tool', 'gate', 'human'].includes(node.type as string),
       );
-      const seven: Record<string, unknown> = JSON.parse(readFileSync(fixture, 'utf8'));
-      // The committed fixture names `claude-code`, which this machine has not
-      // probed and this build does not register — so plan validation would
-      // (correctly) refuse it with PROVIDER_NOT_PROBED. The fixture itself is
-      // content-pinned by `packages/core/test/plan-hash-golden.test.ts` and must
-      // not move, so the adapter is re-pointed on the *returned* document only.
-      const nodes = (seven.nodes as Record<string, unknown>[]).map((node) =>
+      const nodes = admissible.map((node) =>
         node.type === 'agent'
           ? { ...node, provider: { prefer: ['claude'], requires: ['structuredOutput'] } }
           : node,
       );
-      const agent = scripted(present({ ...seven, nodes, runId: RUN, taskSpecHash: SPEC_HASH }));
+      const ids = new Set(nodes.map((node) => node.id as string));
+      const edges = (seven.edges as Record<string, unknown>[]).filter(
+        (edge) => ids.has(edge.from as string) && ids.has(edge.to as string),
+      );
+      const agent = scripted(
+        present({ ...seven, nodes, edges, runId: RUN, taskSpecHash: SPEC_HASH }),
+      );
 
       // The fixture's gate covers `lint-has-zero-errors`, so the spec pinned
       // for this one case is the spec that gate is a gate *for*. Reusing the
@@ -342,10 +365,62 @@ suite('EPIC-11-S1 — three inputs compile to PlanGraph v1', () => {
         'tool',
         'gate',
         'human',
-        'map',
-        'loop',
-        'subgraph',
       ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('AC7 — and the other three are refused, by name, with a repairable diagnostic', async ({
+    tmp,
+  }) => {
+    // KAR-23.9. `map`, `loop` and `subgraph` are in the *schema* — KAR-11.1
+    // AC7's claim, which `packages/core/test/plan-graph-fixture.test.ts` still
+    // pins — and no daemon composes a performer for any of them. Admitting one
+    // produces a run that fails at node 27 and takes its dependants with it, so
+    // compile time is where the planner is told, once.
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      const seven: Record<string, unknown> = JSON.parse(readFileSync(sevenTypesFixture, 'utf8'));
+      const nodes = (seven.nodes as Record<string, unknown>[]).map((node) =>
+        node.type === 'agent'
+          ? { ...node, provider: { prefer: ['claude'], requires: ['structuredOutput'] } }
+          : node,
+      );
+      // The same document twice: `compilePlanV1` retries once, and the second
+      // failure is the escalation.
+      const document = present({ ...seven, nodes, runId: RUN, taskSpecHash: SPEC_HASH });
+      const agent = scripted(document, document);
+
+      const result = await compile(db, tmp, agent, {
+        spec: TaskSpecSchema.parse({
+          ...SPEC,
+          acceptanceCriteria: [
+            { id: 'lint-has-zero-errors', statement: 'pnpm lint reports zero errors.' },
+          ],
+        }),
+      });
+
+      // Two attempts, both refused: §3.5's escalation, not a `failed` compile —
+      // the plan was well-formed and the *work* is what nothing can perform.
+      expect(result.outcome).toBe('needs-human');
+      const failures = readRange(db, RUN, 0, 500).events.filter(
+        (event) => event.kind === 'plan.validation_failed',
+      );
+      expect(failures.length).toBe(2);
+
+      const codes = (failures[0]?.payload as { diagnostics: { code: string; node: string }[] })
+        .diagnostics;
+      expect(
+        codes.filter((one) => one.code === 'NODE_TYPE_UNPERFORMABLE').map((one) => one.node),
+      ).toEqual(['retry-flaky-check', 'review-each-file', 'ship-it']);
+
+      // §3.5 — the retry's packet carries the diagnostics **verbatim**, which
+      // is the whole mechanism by which the planner can act on them.
+      expect(agent.prompts).toHaveLength(2);
+      expect(agent.prompts[1]).toContain('NODE_TYPE_UNPERFORMABLE');
+      expect(agent.prompts[1]).toContain('agent, gate, tool');
     } finally {
       db.close();
     }

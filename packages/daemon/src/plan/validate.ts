@@ -51,6 +51,7 @@ import type {
 } from '@DeFlow/core';
 import { hasBlockingDiagnostic, validatePlan, withCoveredByGates } from '@DeFlow/core';
 import { appendEvents, applyPatchedPlanVersion, PATCH_STALE } from '@DeFlow/ledger';
+import { PERFORMABLE_NODE_TYPES, PERFORMABLE_TOOL_KINDS } from '../exec/performable.ts';
 
 /**
  * D13's flat node ref. The one place the string is composed, so the scheme is
@@ -119,6 +120,20 @@ export async function validatePlanVersion(request: PlanValidationRequest): Promi
   return {
     diagnostics: validatePlan(request.plan, request.spec, request.caps, {
       estimatePacketTokens: request.estimatePacketTokens,
+      // KAR-23.9 — what this daemon can actually perform, read from the one
+      // constant `pipeline/live-nodes.ts` composes its registry against.
+      //
+      // Supplied here rather than by each caller, and that is the whole design:
+      // `compilePlanV1`, `commitPatchedPlan`, `gates/repair-loop.ts` and
+      // `providers/quota-reroute.ts` all get the guard with **zero** call-site
+      // changes, and a patch cannot smuggle a `map` node past it either. A
+      // per-caller option would be a check somebody eventually forgets, which
+      // is how sixteen nodes were admitted on 2026-08-24 for work seven of them
+      // could never do.
+      performable: {
+        nodeTypes: PERFORMABLE_NODE_TYPES,
+        toolKinds: PERFORMABLE_TOOL_KINDS,
+      },
       refusedRefs: verdicts.filter((verdict) => !verdict.ok).map((verdict) => verdict.id),
     }),
     spec: withCoveredByGates(request.spec, request.plan),

@@ -45,6 +45,7 @@ import {
   type Handle,
   type NodeId,
   reasonCode,
+  splitCommandLine,
   type VerdictOutcome,
   type VerdictV3,
 } from '@DeFlow/core';
@@ -169,42 +170,12 @@ export interface GateRun {
 /**
  * A `run:` line as argv.
  *
- * Quote-aware and nothing else: no expansion, no globbing, no substitution, no
- * operators. §10.4 is explicit that static analysis of shell strings is
- * undecidable and gives false confidence, and this is not that — it is the
- * smallest reading that turns one documented YAML field into the `(command,
- * args)` pair the permission layer already judges. A command that needs a shell
- * says so by naming one, and is then judged as `sh`.
+ * Moved down to `@DeFlow/core` by KAR-23.9 and re-exported here unchanged: a
+ * `tool` node's `run` line is now read the same way, by the same reading, and a
+ * second copy would be a second answer to "which binary is this" for the deny
+ * list to disagree with itself over.
  */
-export function splitCommandLine(line: string): readonly string[] {
-  const words: string[] = [];
-  let current = '';
-  let quote: '"' | "'" | null = null;
-  let started = false;
-
-  for (const char of line) {
-    if (quote !== null) {
-      if (char === quote) quote = null;
-      else current += char;
-      continue;
-    }
-    if (char === '"' || char === "'") {
-      quote = char;
-      started = true;
-      continue;
-    }
-    if (/\s/.test(char)) {
-      if (started) words.push(current);
-      current = '';
-      started = false;
-      continue;
-    }
-    current += char;
-    started = true;
-  }
-  if (started) words.push(current);
-  return words;
-}
+export { splitCommandLine } from '@DeFlow/core';
 
 // ── the child ────────────────────────────────────────────────────────────────
 

@@ -35,6 +35,7 @@ it as JSON Schema 2020-12 and copied into a run directory as `.DeFlow/schemas/` 
 | `DeFlow.reconsurvey.v1`   | `src/recon.ts`            | What a recon session claims about the repository — claims only (F2.2)  |
 | `DeFlow.taskspec.v1`      | `src/task-spec.ts`        | The approved intent a run is measured against (F1.1)                   |
 | `DeFlow.taskspecdraft.v1` | `src/framing.ts`          | What the framing interview returns, before DeFlow seals it (F1.2)      |
+| `DeFlow.toolresult.v1`    | `src/tool-result.ts`      | What a `tool` node of kind `script` produced: its exit, its duration, and handles to the two streams (F2.1) |
 | `DeFlow.verdict.v1`       | `src/verdict.ts`          | A gate verdict: outcome, per-criterion status, findings (F7.4)         |
 | `DeFlow.verdict.v2`       | `src/verdict.ts`          | The same, naming the `specHash` it judged, so a spec edit voids it (F1.5) |
 | `DeFlow.verdict.v3`       | `src/verdict.ts`          | The gate contract: blob-anchored findings and what the verdict cost (F7.3, F6.9) |

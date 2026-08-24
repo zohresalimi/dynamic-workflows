@@ -32,6 +32,7 @@
  */
 import type {
   GateDisposition,
+  PermissionLevel,
   SandboxDegradation,
   SandboxRuntimeConfig,
   SandboxStrategy,
@@ -39,12 +40,14 @@ import type {
 import {
   SANDBOX_DEPENDENCY_NAMES,
   SANDBOX_RUNTIME_BIN,
+  SANDBOX_RUNTIME_PACKAGE,
   sandboxDependencies,
   sandboxRuntimeConfig,
   sandboxStrategy,
 } from '@DeFlow/core';
-import { accessSync, constants, statSync } from 'node:fs';
-import { join } from 'node:path';
+import { accessSync, constants, readFileSync, statSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { dirname, join } from 'node:path';
 import { connectorPermissionRules } from './connector-policy.ts';
 import { sandboxUnavailable } from './failures.ts';
 import type { ProviderSpec, ShimContext, ShimPlan } from './provider-registry.ts';
@@ -125,6 +128,50 @@ function onPath(bin: string, roots: readonly string[]): string | null {
     }
   }
   return null;
+}
+
+/**
+ * KAR-23.9 — where the wrapper binary comes from, and the two places it may
+ * come from.
+ *
+ * 1. The **operator's own login-`PATH` roots**, already resolved and split by
+ *    the caller. This is what `sandboxedShimPlan` has always done, and it stays
+ *    first: an operator who installed `srt` deliberately gets the one they
+ *    installed.
+ * 2. The copy **DeFlow itself pinned** (`SANDBOX_RUNTIME_VERSION`), resolved
+ *    through its own `package.json` rather than by guessing a path inside
+ *    `node_modules`. Without this a correctly installed DeFlow on a machine
+ *    with no global `srt` refuses every non-vendor node — which is exactly the
+ *    class of refusal KAR-23.9 exists to stop turning into "nothing runs".
+ *
+ * **Never a path from the worktree, and never one the plan names.** A tool
+ * node's `run` line is untrusted content; if it could name its own sandbox it
+ * would not be a sandbox. `null` means the wrapper cannot be found at all,
+ * which the caller must turn into a refusal *before* a spawn — an unwrapped
+ * child at a level DeFlow promised to enforce is the silent degradation
+ * `failIfUnavailable` exists to prevent, one layer up.
+ */
+export function resolveSandboxRuntime(roots: readonly string[]): string | null {
+  const onOperatorPath = onPath(SANDBOX_RUNTIME_BIN, roots);
+  if (onOperatorPath !== null) return onOperatorPath;
+
+  try {
+    const require = createRequire(import.meta.url);
+    const manifestPath = require.resolve(`${SANDBOX_RUNTIME_PACKAGE}/package.json`);
+    const manifest = JSON.parse(readFileSync(manifestPath, 'utf8')) as {
+      readonly bin?: string | Readonly<Record<string, string>>;
+    };
+    const bin =
+      typeof manifest.bin === 'string' ? manifest.bin : manifest.bin?.[SANDBOX_RUNTIME_BIN];
+    if (bin === undefined) return null;
+    const candidate = join(dirname(manifestPath), bin);
+    accessSync(candidate, constants.X_OK);
+    return candidate;
+  } catch {
+    // Not installed, not executable, or a manifest this build cannot read. All
+    // three are "there is no wrapper here", and the caller refuses.
+    return null;
+  }
 }
 
 /**
@@ -233,7 +280,10 @@ export function sandboxedShimPlan(
     return { ...base, argv, strategy, degraded: [], runtimeConfig: null };
   }
 
-  const wrapper = onPath(SANDBOX_RUNTIME_BIN, sandbox.roots);
+  // KAR-23.9 — one answer to "where is the wrapper", shared with
+  // `sandboxedCommand` below. Before this, a machine with a correctly installed
+  // DeFlow and no global `srt` refused every non-vendor node.
+  const wrapper = resolveSandboxRuntime(sandbox.roots);
   if (wrapper === null) {
     throw sandboxUnavailable(SANDBOX_RUNTIME_BIN, `${SANDBOX_RUNTIME_BIN} (sandbox-runtime)`, {
       platform: sandbox.platform,
@@ -249,6 +299,99 @@ export function sandboxedShimPlan(
     argv: [WRAPPER_SETTINGS_FLAG, path, base.command, ...argv],
     strategy,
     degraded: [],
+    runtimeConfig: { path, document },
+  };
+}
+
+/**
+ * KAR-23.9 — the same policy delivery, for a child that has **no vendor**.
+ *
+ * `sandboxedShimPlan` above takes a `ProviderSpec`, because everything it wraps
+ * is a CLI KAR-05.3 registered. A plan script is not one: it is a line the
+ * planner wrote, and `sandboxStrategy`'s own default-deny rule is what answers
+ * the question it raises — anything that is not a *known* self-sandboxing CLI
+ * is wrapped, because "I have not heard of this" and "this sandboxes itself"
+ * are opposite claims.
+ *
+ * So the shape is `sandboxedShimPlan`'s minus the vendor: the caller supplies
+ * the command and its argv, this returns what to spawn and the config document
+ * that must exist on disk first. The config is written by the **caller**, for
+ * the reason the module note gives — a plan builder that touched the filesystem
+ * could not be the pure, construction-time refusal AC5 needs.
+ *
+ * `full` returns the bare command with `runtimeConfig: null`, on the same
+ * argument the vendor path makes: a wrapper configured to allow everything and
+ * no wrapper at all are the same enforcement, and only one of them can be
+ * misconfigured. On the tool-node path that branch is unreachable —
+ * `toolNodePerformer` refuses `full` before it gets here — but it exists, and
+ * is tested, so the function stays total.
+ */
+export interface SandboxedCommand {
+  /** What to spawn: the wrapper, or the command itself at `full`. */
+  readonly command: string;
+  readonly argv: readonly string[];
+  /** The wrapper config and where it has to exist before the spawn. `null`
+   * when nothing is wrapped. */
+  readonly runtimeConfig: {
+    readonly path: string;
+    readonly document: SandboxRuntimeConfig;
+  } | null;
+}
+
+export interface SandboxedCommandInput {
+  /** The binary to run, absolute. Never a bare name for `PATH` to answer at
+   * spawn time (docs/07-provider-adapter-layer.md §4.3). */
+  readonly command: string;
+  readonly args: readonly string[];
+  readonly permission: PermissionLevel;
+  /** The node's worktree, absolute — the only writable root below `full`. */
+  readonly worktree: string;
+  readonly platform: NodeJS.Platform;
+  /** Where the wrapper may be found, and where the sandbox dependencies are
+   * looked for: the operator's login `PATH`, already split. */
+  readonly roots: readonly string[];
+  /** A directory DeFlow owns, where the wrapper's config is written. */
+  readonly configDir: string;
+  /** Consulted only at `worktree+net`. */
+  readonly allowedDomains?: readonly string[];
+}
+
+export function sandboxedCommand(input: SandboxedCommandInput): SandboxedCommand {
+  // Dependencies first, for the reason `sandboxedShimPlan` checks them first: a
+  // level that cannot be enforced on this machine must not reach a spawn at
+  // all. Missing is a throw, never a degradation.
+  checkSandboxDependencies({
+    permission: input.permission,
+    platform: input.platform,
+    roots: input.roots,
+  });
+
+  const document = sandboxRuntimeConfig({
+    level: input.permission,
+    worktree: input.worktree,
+    ...(input.allowedDomains === undefined ? {} : { allowedDomains: input.allowedDomains }),
+  });
+
+  if (document === null) {
+    return { command: input.command, argv: [...input.args], runtimeConfig: null };
+  }
+
+  const wrapper = resolveSandboxRuntime(input.roots);
+  if (wrapper === null) {
+    throw sandboxUnavailable(SANDBOX_RUNTIME_BIN, `${SANDBOX_RUNTIME_BIN} (sandbox-runtime)`, {
+      platform: input.platform,
+      permission: input.permission,
+      searched: input.roots.length,
+    });
+  }
+
+  const path = join(input.configDir, SANDBOX_RUNTIME_SETTINGS_FILE);
+  return {
+    command: wrapper,
+    // `--settings <path>` and then the wrapped command line, unmodified. The
+    // caller's own quoting is never re-quoted here: `spawn` without a shell is
+    // what makes an argv element containing spaces a single word.
+    argv: [WRAPPER_SETTINGS_FLAG, path, input.command, ...input.args],
     runtimeConfig: { path, document },
   };
 }

@@ -44,6 +44,7 @@ const CONFORMING: Record<string, string> = {
     repoRoot,
     'packages/core/test/fixtures/specs/vue3-migration.framed.json',
   ),
+  'DeFlow.toolresult.v1': join(corpus, 'DeFlow.toolresult.v1.valid.json'),
   'DeFlow.verdict.v1': join(corpus, 'DeFlow.verdict.v1.valid.json'),
   'DeFlow.verdict.v2': join(corpus, 'DeFlow.verdict.v2.valid.json'),
   'DeFlow.verdict.v3': join(corpus, 'DeFlow.verdict.v3.valid.json'),

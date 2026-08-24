@@ -793,6 +793,39 @@ registerUpcaster({
 });
 
 /**
+ * `plan.validation_failed` v3 → v4 (KAR-23.9). See schemas/CHANGELOG.md.
+ *
+ * v4 widens `diagnostics[].code` by two members, `NODE_TYPE_UNPERFORMABLE` and
+ * `TOOL_KIND_UNPERFORMABLE` — the check the 2026-08-24 incident proved was
+ * missing, where a validated plan was admitted with seven nodes of a type
+ * nothing in the daemon composes a performer for. Nothing else changes, so the
+ * hop is the identity for the reason every enum-widening hop in this registry
+ * is: every v3 payload is already a valid v4 one, and no v3 payload can have
+ * carried a code that did not exist yet.
+ */
+registerUpcaster({
+  kind: 'plan.validation_failed',
+  from: 3,
+  to: PlanValidationFailedSchema,
+  fixture: {
+    version: 1,
+    planHash: `sha256-${'c'.repeat(64)}`,
+    by: 'planner',
+    attempt: 0,
+    diagnostics: [
+      {
+        severity: 'warning',
+        code: 'COVERED_BY_GATES_MISMATCH',
+        node: '(plan)',
+        key: 'ac-9',
+        message: "acceptance criterion 'ac-9' arrived with a coveredByGates nobody computed",
+      },
+    ],
+  },
+  up: (payload) => payload,
+});
+
+/**
  * `gate.evaluated` v3 → v4 (KAR-12.2). See schemas/CHANGELOG.md.
  *
  * v4's verdict is `DeFlow.verdict.v4`, which adds one optional field —

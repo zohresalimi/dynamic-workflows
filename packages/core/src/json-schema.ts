@@ -51,6 +51,7 @@ import {
   ReconSurveySchema,
 } from './recon.ts';
 import { TASKSPEC_SCHEMA_ID, TaskSpecSchema } from './task-spec.ts';
+import { TOOL_RESULT_SCHEMA_ID, ToolResultSchema } from './tool-result.ts';
 import {
   FINDING_SCHEMA_ID,
   FINDING_V2_SCHEMA_ID,
@@ -175,6 +176,13 @@ export const SCHEMA_REGISTRY: readonly SchemaRegistration[] = [
     schemaId: TASKSPEC_SCHEMA_ID,
     summary: 'The approved intent a run is measured against (F1.1).',
     schema: TaskSpecSchema,
+  },
+  {
+    schemaId: TOOL_RESULT_SCHEMA_ID,
+    summary:
+      'What a `tool` node of kind `script` produced: its exit, how long it took, and handles ' +
+      'to the two streams — never the output itself, which lives in the data plane (F2.1).',
+    schema: ToolResultSchema,
   },
   {
     schemaId: VERDICT_SCHEMA_ID,

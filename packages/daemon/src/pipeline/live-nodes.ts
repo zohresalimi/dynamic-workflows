@@ -99,12 +99,12 @@ import type { GateDefinition } from '@DeFlow/gates';
 import { discoverGateDefinitions } from '@DeFlow/gates';
 import { putBlob, readRange, scheduleWakeIfChanged } from '@DeFlow/ledger';
 import { Buffer } from 'node:buffer';
-import { createHash } from 'node:crypto';
-import { readFileSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import process from 'node:process';
 import { createEffectRunner } from '../effects/durable.ts';
 import { sqliteLedgerSink } from '../exec/ledger-sink.ts';
+import type { PerformableNodeType } from '../exec/performable.ts';
 import { sqliteProcessRegistry } from '../exec/process-registry.ts';
 import type { ExecContext, NodePerformer } from '../exec/run-executor.ts';
 import { seenShimUuids } from '../exec/shim-replay.ts';
@@ -114,6 +114,7 @@ import { Git } from '../git/git.ts';
 import { worktreePathFor } from '../git/worktree-args.ts';
 import { WorkspaceManager } from '../git/worktree-manager.ts';
 import { log } from '../logging.ts';
+import { binarySha256 } from '../proc/binary-digest.ts';
 import { buildChildEnv, createRunTmpdir } from '../proc/env.ts';
 import { discoverConnectorServers } from '../providers/connector-servers.ts';
 import { writeRunSchemas } from '../run-schemas.ts';
@@ -123,39 +124,13 @@ import type { Chosen } from './live-chain.ts';
 import { ASSUMED_CONTEXT_FLOOR, chooseProvider, PROVIDER_DEFAULT_MODEL } from './live-chain.ts';
 import type { RunExecution, RunExecutionContext } from './run-execution.ts';
 import { createRunExecution } from './run-execution.ts';
+import { toolNodePerformer } from './tool-node.ts';
 
 const wiring = log.child({ mod: 'live-nodes' });
 
 /** One per process: the estimator every packet on this path is measured with,
  * so one run never mixes two counting tiers (docs/08 §7). */
 const tokenizer = o200kTokenizer();
-
-/** Digested once per (path, mtime, size): an agent binary does not change
- * under a daemon, and hashing 60 MB per node would be a real cost. */
-const digests = new Map<string, string>();
-
-/**
- * The sha256 of the binary this attempt is about to spawn, hex and bare.
- *
- * **Not optional, and the reason is worth the paragraph.** `node.started`'s
- * payload requires a bare sha256 (`NodeStartedSchema`), and `appendEvents` does
- * not validate payloads on write — so a performer that passed `''` writes an
- * event the ledger stores happily and `parseEvent` then refuses on **read**.
- * The row is in the file, the SSE stream drops it, and `deflow run` never
- * learns the node started, so it never follows the node's `io_chunk` tail and
- * the operator sees a run with no agent output at all. That is precisely the
- * 2026-08-12 symptom, reproduced by a two-character shortcut, and it is what
- * KAR-19.5's smoke test caught on its first green chain.
- */
-function binarySha256(path: string): string {
-  const stat = statSync(path);
-  const key = `${path}:${String(stat.mtimeMs)}:${String(stat.size)}`;
-  const held = digests.get(key);
-  if (held !== undefined) return held;
-  const digest = createHash('sha256').update(readFileSync(path)).digest('hex');
-  digests.set(key, digest);
-  return digest;
-}
 
 /** A pre-execution run's whole log fits far inside this. */
 const EVENT_PAGE = 5_000;
@@ -740,8 +715,15 @@ export function createLiveRunExecution(options: LiveExecutionOptions): RunExecut
       }
 
       return {
+        // KAR-23.9 — `satisfies Record<PerformableNodeType, NodePerformer>` on
+        // an object literal errors on a **missing** key and on an **extra**
+        // one, so this registry and `PERFORMABLE_NODE_TYPES` — the set plan
+        // validation refuses a plan against — are compiler-identical rather
+        // than two lists that happen to agree today. Adding a performer without
+        // widening the constant does not compile, and vice versa.
         perform: byNodeType({
           agent: liveAgentPerformer(options, cwd),
+          tool: toolNodePerformer(options, cwd),
           gate: gateNodePerformer({
             dataDir: options.dataDir,
             env: options.daemonEnv,
@@ -765,7 +747,7 @@ export function createLiveRunExecution(options: LiveExecutionOptions): RunExecut
               };
             },
           }),
-        }),
+        } satisfies Record<PerformableNodeType, NodePerformer>),
         effects: createEffectRunner({
           db,
           clock: options.clock,

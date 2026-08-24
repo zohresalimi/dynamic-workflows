@@ -62,6 +62,27 @@ file is where you record it.
 
 ## Entries
 
+### DeFlow.toolresult.v1
+
+**KAR-23.9.** A new document, not a version bump: nothing shipped under this id before, because
+until this story no daemon could perform a `tool` node at all. It is what a script node's
+`node.completed` files its output under, exactly as `DeFlow.verdict.v4` is what a gate node's does —
+so `outputSchemaId` names a document that really exists rather than a shape nobody can resolve.
+
+| Field                | Why it is here                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------------- |
+| `kind: 'script'`     | A discriminator, so `mcp` and `http` arrive as members rather than as optional fields on this one.  |
+| `exitCode` nullable  | `null` is *killed before it could exit* — a timeout, a cancel — which is a different fact from `0`. |
+| `signal` nullable    | Which signal ended it, when one did.                                                               |
+| `durationMs`         | Measured on the injected `Clock` (NF9), never `Date.now()`.                                        |
+| `timedOut`           | Whether the deadline is what ended it, stated rather than inferred from a null exit code.          |
+| `stdout` / `stderr`  | **Handles**, nullable. The output lives in the data plane — `io_chunk` while it happens, a content-addressed blob afterwards — so the fix for a silent tool node does not become a fat `node.completed` payload. `null` means the stream produced nothing, which is not the same as a handle to an empty blob. |
+
+**Why not the node's own `returns.schemaId`.** That was the smaller diff and it would have put a
+quiet lie in the ledger: a script produces an exit code and two streams, not the planner's contract,
+and nothing today validates the claim. The ledger would record that the node returned a document it
+never produced.
+
 ### DeFlow.finding.v2
 
 **KAR-12.3.** A finding's line is anchored to the blob it was read from:
@@ -390,6 +411,30 @@ of the *document* rather than of any node, so it carries the `PLAN_SCOPE` sentin
 payload schema that accepted only valid `NodeId`s would make the append throw on exactly the two
 faults the validator exists to catch, which is a worse failure than the one it was preventing. The
 sentinel's parentheses keep it outside the charset a real id could ever occupy.
+
+### plan.validation_failed v4
+
+**KAR-23.9.** `diagnostics[].code` widens by two members, `NODE_TYPE_UNPERFORMABLE` and
+`TOOL_KIND_UNPERFORMABLE`: a node of a type — or a `tool` node of a kind — the daemon about to run
+the plan composes no performer for.
+
+| Change                                 | Kind     | Why it is not lossy                                                                                                   |
+| -------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `diagnostics[].code` gains two members | widening | Every v3 payload is already a valid v4 one — the hop is the identity — and no v3 payload can have carried either code. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the check exists at all.** On 2026-08-24, `run_20260824T110147Z_f21769` compiled and validated
+a plan of sixteen nodes, seven of them `tool` nodes. `byNodeType` composed performers for `agent` and
+`gate` only, so the first tool node failed `internal`/`permanent` — *"nothing in this daemon knows
+how to perform a tool node"* — and the other fifteen followed it down as `dependency.failed`. Every
+one of those nodes had passed [06 §3](../docs/06-planning-and-replanning.md)'s *"cheapest correctness
+gate in the system"*, because the gate had never been told what the executor can run. KAR-23.9 ships
+the performer **and** the check; the check is what makes the next missing performer a repairable
+diagnostic on the planner's one retry instead of a run that dies at node 27.
+
+**Two codes rather than one**, because the repair differs: an unperformable node *type* has to be
+re-planned as other work, while an unperformable tool *kind* is the same work expressed another way.
 
 ### plan.validation_failed v3
 

@@ -13,7 +13,7 @@ import { expect, it, describe as suite } from 'vitest';
 import { canonicalJson } from './canonical-json.ts';
 import { planHash } from './hash.ts';
 import { renderPlanDiagnostics } from './plan-diagnostics.ts';
-import { type PlanGraph, PlanGraphSchema } from './plan-graph.ts';
+import { NODE_TYPES, type PlanGraph, PlanGraphSchema, TOOL_KINDS } from './plan-graph.ts';
 import { type TaskSpec, TaskSpecSchema } from './task-spec.ts';
 import { type PlanTimeCapability, validatePlan } from './validate-plan.ts';
 
@@ -54,7 +54,12 @@ const SPEC: TaskSpec = TaskSpecSchema.parse({
 });
 
 const planDiagnostics = (plan: PlanGraph) =>
-  validatePlan(plan, SPEC, CAPS, { estimatePacketTokens: () => 0 });
+  validatePlan(plan, SPEC, CAPS, {
+    estimatePacketTokens: () => 0,
+    // "Assume everything is performable": this file is about the diagnostic
+    // *vocabulary*, and KAR-23.9's own check has its own suite next door.
+    performable: { nodeTypes: [...NODE_TYPES], toolKinds: [...TOOL_KINDS] },
+  });
 
 function graph(nodes: unknown[]): PlanGraph {
   return PlanGraphSchema.parse({
