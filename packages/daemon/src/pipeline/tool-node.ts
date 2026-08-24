@@ -361,6 +361,37 @@ function runChild(input: ToolNodeSpawnInput): Promise<ChildOutcome> {
 }
 
 /**
+ * `runChild`, with a spawn that never happened typed as one.
+ *
+ * A missing wrapper, a missing `/bin/sh`, a worktree that vanished under the
+ * `cwd`: all of them are `ENOENT` out of `spawn`, and all of them are permanent
+ * — the same binary at the same path fails identically on a retry. Left
+ * untyped they become `internal`, which tells an operator nothing and puts the
+ * fault on DeFlow rather than on the machine.
+ */
+async function spawnOrRefuse(
+  at: NodeId,
+  binary: string,
+  input: ToolNodeSpawnInput,
+): Promise<ChildOutcome> {
+  try {
+    return await runChild(input);
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === undefined) throw error;
+    throw new NodeFailureError(
+      `tool node ${at} could not spawn ${binary} (${code}); nothing ran, so nothing has to be ` +
+        'reconciled',
+      {
+        reason: 'adapter.spawn-failed',
+        class: 'permanent',
+        detail: { node: at, binary, code },
+      },
+    );
+  }
+}
+
+/**
  * The performer: one tool-node attempt, in its own worktree, wrapped.
  *
  * Every event it appends it appends itself, because only this layer knows what
@@ -568,7 +599,7 @@ export function toolNodePerformer(options: LiveExecutionOptions, cwd: string): N
           },
           {
             run: async () => {
-              const child = await runChild({
+              const child = await spawnOrRefuse(command.node, wrapped.command, {
                 command: wrapped.command,
                 argv: wrapped.argv,
                 cwd: resolvedCwd,

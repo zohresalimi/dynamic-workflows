@@ -683,4 +683,20 @@ suite('KAR-23.9 — the run-time backstop refuses before a worktree exists', () 
     expect(failure.class).toBe('permanent');
     expect(created).toBe(0);
   });
+
+  it('types a spawn that never happened as adapter.spawn-failed, not internal', async ({ tmp }) => {
+    // A `cwd` inside the worktree that the worktree does not have: it passes
+    // the path-scope check (it really is inside) and then `spawn` answers
+    // `ENOENT` because there is nowhere to run. Permanent — the same directory
+    // is missing on a retry — and untyped it would be `internal`, which puts
+    // the fault on DeFlow rather than on the plan and tells the operator
+    // nothing.
+    const { failure } = await refusal(
+      tmp,
+      toolNode({ kind: 'script', run: 'echo hi', cwd: 'no-such-directory' }),
+    );
+
+    expect(failure.reason).toBe('adapter.spawn-failed');
+    expect(failure.class).toBe('permanent');
+  });
 });
