@@ -270,6 +270,66 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
     return v3;
   }
 
+  it('rejects a patch that inserts a node type nothing can perform (KAR-23.9)', async ({ tmp }) => {
+    // 06 §8's own warning — *"the patch that adds a node reading a key nothing
+    // writes is the one that actually bites, because it happens at node 27 of
+    // 40"* — applies verbatim to a node type nothing composes a performer for.
+    // The guard is in `validatePlan`, so a patch cannot smuggle one past it
+    // either, and `commitPatchedPlan` needed no call-site change to get it.
+    const db = openLedger(tmp);
+    try {
+      const v3 = await committedV3(db, tmp);
+      const v4 = await addressed(
+        parsed(
+          [
+            ...(v3.nodes as unknown as Record<string, unknown>[]),
+            {
+              id: 'until-green',
+              title: 'Repeat until the gate passes',
+              type: 'loop',
+              deps: [],
+              lifecycle: 'active',
+              reads: [],
+              writes: [],
+              permission: 'worktree',
+              pathScopes: { write: ['packages/ui/**'] },
+              returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
+              body: 'recon',
+              maxRounds: 3,
+              goal: { kind: 'gate', gate: 'recon' },
+              noProgress: { sameFailureSignatureLimit: 2, diffSimilarityThreshold: 0.9 },
+            },
+          ],
+          { version: 4, parent: v3.planHash },
+        ),
+      );
+
+      const outcome = await commitPatchedPlan({
+        db,
+        runDir: join(tmp, 'runs', RUN),
+        graph: v4,
+        spec: SPEC,
+        caps: CAPS,
+        estimatePacketTokens: () => 0,
+        refs: checkerFor(tmp),
+        basePlanHash: v3.planHash,
+        patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4u9',
+        decision: DECISION,
+        by: 'planner',
+        planner: PLANNER,
+        ts: T0,
+        epoch: EPOCH,
+      });
+
+      expect(outcome.outcome).toBe('rejected');
+      expect(outcome.diagnostics.map((one) => one.code)).toContain('NODE_TYPE_UNPERFORMABLE');
+      // Never partially applied: the base plan is still what the run runs.
+      expect(readPlanDoc(db, v4.planHash)).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
   it('rejects a patch whose new node reads a key no ancestor writes, before anything commits', async ({
     tmp,
   }) => {
@@ -696,5 +756,96 @@ suite('EPIC-12-S28 — a patch that abandons the last covering gate is rejected'
     } finally {
       db.close();
     }
+  });
+});
+
+// ── KAR-23.9 — the daemon's own door reads the registry ──────────────────────
+
+suite('KAR-23.9 — validatePlanVersion refuses a plan this daemon cannot perform', () => {
+  it('needs no call-site change: the performable set comes from the daemon itself', async ({
+    tmp,
+  }) => {
+    // The whole point of putting the guard in `plan/validate.ts` — the module
+    // that calls itself "the one entry point to plan validation" — is that
+    // `compilePlanV1`, `commitPatchedPlan`, the repair loop and the quota
+    // reroute all get it for free. Nothing below passes a set.
+    const diagnostics = await validate(
+      parsed([
+        agent('recon'),
+        {
+          id: 'fan-out-per-service',
+          title: 'One per service',
+          type: 'map',
+          deps: [],
+          lifecycle: 'active',
+          reads: [],
+          writes: [],
+          permission: 'worktree',
+          pathScopes: { write: ['packages/ui/**'] },
+          returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
+          over: { kind: 'glob', pattern: 'services/*' },
+          concurrency: 2,
+          body: 'recon',
+        },
+      ]),
+      tmp,
+    );
+
+    expect(diagnostics.filter((one) => one.code === 'NODE_TYPE_UNPERFORMABLE')).toMatchObject([
+      { severity: 'error', node: 'fan-out-per-service', key: 'map' },
+    ]);
+  });
+
+  it('and an http tool node is refused for its kind, before a run is ever admitted', async ({
+    tmp,
+  }) => {
+    const diagnostics = await validate(
+      parsed([
+        {
+          id: 'post-webhook',
+          title: 'Tell the tracker',
+          type: 'tool',
+          deps: [],
+          lifecycle: 'active',
+          reads: [],
+          writes: [],
+          permission: 'worktree',
+          pathScopes: { write: [] },
+          returns: { schemaId: 'DeFlow.toolresult.v1', maxTokens: 1500 },
+          effectClass: 'mutating',
+          tool: { kind: 'http', method: 'POST', url: 'https://example.com/hook' },
+        },
+      ]),
+      tmp,
+    );
+
+    expect(diagnostics.filter((one) => one.code === 'TOOL_KIND_UNPERFORMABLE')).toMatchObject([
+      { severity: 'error', node: 'post-webhook', key: 'http' },
+    ]);
+  });
+
+  it('a plan of only performable work carries no such diagnostic', async ({ tmp }) => {
+    const diagnostics = await validate(
+      parsed([
+        agent('recon'),
+        {
+          id: 'run-lint',
+          title: 'Run lint',
+          type: 'tool',
+          deps: [],
+          lifecycle: 'active',
+          reads: [],
+          writes: [],
+          permission: 'worktree',
+          pathScopes: { write: [] },
+          returns: { schemaId: 'DeFlow.toolresult.v1', maxTokens: 1500 },
+          effectClass: 'pure',
+          tool: { kind: 'script', run: 'pnpm lint', cwd: '.' },
+        },
+      ]),
+      tmp,
+    );
+
+    expect(diagnostics).toEqual([]);
   });
 });

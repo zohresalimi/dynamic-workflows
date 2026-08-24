@@ -16,7 +16,13 @@ import { expect, it, describe as suite } from 'vitest';
 import { BUDGET_FRACTION_CEILING } from './build-packet.ts';
 import type { PlanDiagnostic } from './plan-diagnostics.ts';
 import { hasBlockingDiagnostic } from './plan-diagnostics.ts';
-import { type PlanGraph, PlanGraphSchema, type PlanNode } from './plan-graph.ts';
+import {
+  NODE_TYPES,
+  type PlanGraph,
+  PlanGraphSchema,
+  type PlanNode,
+  TOOL_KINDS,
+} from './plan-graph.ts';
 import { type TaskSpec, TaskSpecSchema } from './task-spec.ts';
 import {
   PLAN_SCOPE,
@@ -121,12 +127,28 @@ const COVERED = spec([
 
 const NO_TOKENS = () => 0;
 
+/**
+ * "Assume every node type and every tool kind is performable."
+ *
+ * The option is **required** rather than defaulted, so every existing suite in
+ * this file has to say what it assumes. That is the price of the check being
+ * impossible to disable by forgetting it, and it is the right price: an
+ * optional set would silently switch off the one gate KAR-23.9 exists to add.
+ */
+const ANYTHING_PERFORMABLE = {
+  nodeTypes: [...NODE_TYPES],
+  toolKinds: [...TOOL_KINDS],
+} as const;
+
 const check = (
   plan: PlanGraph,
   taskSpec: TaskSpec = COVERED,
   caps: readonly PlanTimeCapability[] = [CLAUDE],
 ): readonly PlanDiagnostic[] =>
-  validatePlan(plan, taskSpec, caps, { estimatePacketTokens: NO_TOKENS });
+  validatePlan(plan, taskSpec, caps, {
+    estimatePacketTokens: NO_TOKENS,
+    performable: ANYTHING_PERFORMABLE,
+  });
 
 // ── §3.1 reachability (EPIC-11-S6) ───────────────────────────────────────────
 
@@ -302,6 +324,7 @@ suite('EPIC-11-S8 — a node an adapter cannot honour is refused at plan time', 
     const at = (fraction: number) =>
       validatePlan(plan, COVERED, [CLAUDE], {
         estimatePacketTokens: () => Math.round(CLAUDE.maxContext * fraction),
+        performable: ANYTHING_PERFORMABLE,
       });
 
     expect(at(0.61)).toMatchObject([
@@ -315,11 +338,15 @@ suite('EPIC-11-S8 — a node an adapter cannot honour is refused at plan time', 
     const justOver = Math.floor(CLAUDE.maxContext * BUDGET_FRACTION_CEILING) + 1;
 
     expect(
-      validatePlan(plan, COVERED, [CLAUDE], { estimatePacketTokens: () => justOver }),
+      validatePlan(plan, COVERED, [CLAUDE], {
+        estimatePacketTokens: () => justOver,
+        performable: ANYTHING_PERFORMABLE,
+      }),
     ).toMatchObject([{ code: 'PACKET_EXCEEDS_BUDGET' }]);
     expect(
       validatePlan(plan, COVERED, [CLAUDE], {
         estimatePacketTokens: () => Math.floor(CLAUDE.maxContext * BUDGET_FRACTION_CEILING),
+        performable: ANYTHING_PERFORMABLE,
       }),
     ).toEqual([]);
   });
@@ -392,7 +419,10 @@ suite('EPIC-11-S10 — the DeFlow charset and case-insensitive duplicates', () =
     const plan = unparsedGraph([agent(id)]);
 
     expect(
-      validatePlan(plan, COVERED, [CLAUDE], { estimatePacketTokens: NO_TOKENS }),
+      validatePlan(plan, COVERED, [CLAUDE], {
+        estimatePacketTokens: NO_TOKENS,
+        performable: ANYTHING_PERFORMABLE,
+      }),
     ).toMatchObject([{ severity: 'error', code: 'INVALID_NODE_ID', key: id }]);
   });
 
@@ -401,6 +431,7 @@ suite('EPIC-11-S10 — the DeFlow charset and case-insensitive duplicates', () =
 
     const duplicates = validatePlan(plan, COVERED, [CLAUDE], {
       estimatePacketTokens: NO_TOKENS,
+      performable: ANYTHING_PERFORMABLE,
     }).filter((diagnostic) => diagnostic.message.includes('case-insensitive'));
 
     expect(duplicates).toHaveLength(1);
@@ -411,7 +442,10 @@ suite('EPIC-11-S10 — the DeFlow charset and case-insensitive duplicates', () =
     const plan = unparsedGraph([agent('recon'), agent('recon')]);
 
     expect(
-      validatePlan(plan, COVERED, [CLAUDE], { estimatePacketTokens: NO_TOKENS }),
+      validatePlan(plan, COVERED, [CLAUDE], {
+        estimatePacketTokens: NO_TOKENS,
+        performable: ANYTHING_PERFORMABLE,
+      }),
     ).toMatchObject([{ code: 'INVALID_NODE_ID', node: 'recon', key: 'recon' }]);
   });
 
@@ -420,6 +454,7 @@ suite('EPIC-11-S10 — the DeFlow charset and case-insensitive duplicates', () =
 
     const diagnostics = validatePlan(plan, COVERED, [CLAUDE], {
       estimatePacketTokens: NO_TOKENS,
+      performable: ANYTHING_PERFORMABLE,
       refusedRefs: ['impl'],
     });
 
@@ -440,6 +475,7 @@ suite('EPIC-11-S11 — every criterion reaches a gate, or the plan is refused', 
 
     const coverage = validatePlan(plan, uncovered, [CLAUDE], {
       estimatePacketTokens: NO_TOKENS,
+      performable: ANYTHING_PERFORMABLE,
     }).filter((diagnostic) => diagnostic.code === 'CRITERION_UNCOVERED');
 
     expect(coverage).toMatchObject([{ severity: 'error', node: PLAN_SCOPE, key: 'ac-5' }]);
@@ -629,5 +665,141 @@ suite('KAR-13.1 AC7 — an unanswerable deadline is caught at plan time', () => 
     ]);
 
     expect(check(plan)).toEqual([]);
+  });
+});
+
+// ── KAR-23.9 — a node nothing can perform ────────────────────────────────────
+
+/**
+ * The set the shipped daemon actually composes performers for, spelled here as
+ * a literal on purpose: `@DeFlow/core` may not import `@DeFlow/daemon`, and the
+ * two are held together by `packages/daemon/src/exec/performable.ts` being what
+ * `plan/validate.ts` really passes.
+ */
+const THIS_DAEMON = { nodeTypes: ['agent', 'gate', 'tool'], toolKinds: ['script'] } as const;
+
+const performableCheck = (plan: PlanGraph, taskSpec: TaskSpec = COVERED) =>
+  validatePlan(plan, taskSpec, [CLAUDE], {
+    estimatePacketTokens: NO_TOKENS,
+    performable: THIS_DAEMON,
+  });
+
+const structural = (id: string, over: Record<string, unknown>) => ({
+  id,
+  title: id,
+  deps: [],
+  lifecycle: 'active',
+  reads: [],
+  writes: [],
+  permission: 'read',
+  pathScopes: { write: [] },
+  returns: { schemaId: 'DeFlow.finding.v1' },
+  ...over,
+});
+
+const mapNode = structural('fan-out-per-service', {
+  type: 'map',
+  over: { kind: 'glob', pattern: 'services/*' },
+  concurrency: 2,
+  body: 'impl',
+});
+
+const loopNode = structural('until-green', {
+  type: 'loop',
+  body: 'impl',
+  maxRounds: 3,
+  goal: { kind: 'gate', gate: 'gate-typecheck' },
+  noProgress: { sameFailureSignatureLimit: 2, diffSimilarityThreshold: 0.9 },
+});
+
+const subgraphNode = structural('nested', {
+  type: 'subgraph',
+  graph: { kind: 'template', templateId: 'library-upgrade', params: {} },
+});
+
+const toolNode = (over: Record<string, unknown>) =>
+  structural('post-webhook', { type: 'tool', effectClass: 'pure', ...over });
+
+suite('KAR-23.9 — a plan naming work nobody can perform is refused at plan time', () => {
+  it('a map node is one blocking NODE_TYPE_UNPERFORMABLE naming the node and the type', () => {
+    const found = performableCheck(
+      graph([agent('impl'), mapNode, gate('gate-typecheck', ['ac-1'])]),
+    );
+    const unperformable = found.filter((one) => one.code === 'NODE_TYPE_UNPERFORMABLE');
+
+    expect(unperformable).toMatchObject([
+      { severity: 'error', node: 'fan-out-per-service', key: 'map' },
+    ]);
+    // The message has to be actionable by a *planner*, because it is handed
+    // back verbatim on the one retry §3.5 allows.
+    expect(unperformable[0]?.message).toContain('agent, gate, tool');
+    expect(hasBlockingDiagnostic(found)).toBe(true);
+  });
+
+  it('reports loop and subgraph too, one diagnostic each, and every one of them', () => {
+    const found = performableCheck(
+      graph([agent('impl'), mapNode, loopNode, subgraphNode, gate('gate-typecheck', ['ac-1'])]),
+    );
+
+    expect(
+      found.filter((one) => one.code === 'NODE_TYPE_UNPERFORMABLE').map((one) => one.node),
+    ).toEqual(['fan-out-per-service', 'nested', 'until-green']);
+  });
+
+  it('a human node is never diagnosed: the scheduler answers it, nothing performs it', () => {
+    // Load-bearing. `decide()` admits a `human` node by `SuspendNode` and never
+    // by `StartNode`, so diagnosing it here would refuse every plan KAR-13.1
+    // exists to make possible.
+    const humanNode = structural('approve-scope', {
+      type: 'human',
+      prompt: 'Extend the migration scope?',
+      options: [{ id: 'yes', label: 'Extend scope', effect: 'approve' }],
+    });
+
+    expect(
+      performableCheck(graph([humanNode, gate('gate-typecheck', ['ac-1'])])).filter(
+        (one) => one.code === 'NODE_TYPE_UNPERFORMABLE',
+      ),
+    ).toEqual([]);
+  });
+
+  it('an http tool node is TOOL_KIND_UNPERFORMABLE, and a script one is clean', () => {
+    const http = performableCheck(
+      graph([
+        toolNode({ tool: { kind: 'http', method: 'POST', url: 'https://example.com/hook' } }),
+        gate('gate-typecheck', ['ac-1']),
+      ]),
+    );
+
+    expect(http.filter((one) => one.code === 'TOOL_KIND_UNPERFORMABLE')).toMatchObject([
+      { severity: 'error', node: 'post-webhook', key: 'http' },
+    ]);
+
+    const script = performableCheck(
+      graph([
+        toolNode({ tool: { kind: 'script', run: 'pnpm build' } }),
+        gate('gate-typecheck', ['ac-1']),
+      ]),
+    );
+    expect(script).toEqual([]);
+  });
+
+  it('an mcp tool node is refused for its kind and not for its type', () => {
+    const found = performableCheck(
+      graph([
+        toolNode({ tool: { kind: 'mcp', server: 'linear', tool: 'create_issue', args: {} } }),
+        gate('gate-typecheck', ['ac-1']),
+      ]),
+    );
+
+    expect(found.map((one) => one.code)).toEqual(['TOOL_KIND_UNPERFORMABLE']);
+  });
+
+  it('a daemon that performs everything reports nothing — the check is the set, not a habit', () => {
+    expect(
+      check(
+        graph([agent('impl'), mapNode, loopNode, subgraphNode, gate('gate-typecheck', ['ac-1'])]),
+      ).filter((one) => one.code === 'NODE_TYPE_UNPERFORMABLE'),
+    ).toEqual([]);
   });
 });
