@@ -104,7 +104,10 @@ suite('EPIC-11-S5 — a failing plan version is an event, not an exception', () 
     // v4 since KAR-23.9: two more, `NODE_TYPE_UNPERFORMABLE` and
     // `TOOL_KIND_UNPERFORMABLE` — the check that was missing on 2026-08-24,
     // when a plan validated with seven nodes nothing could perform.
-    expect(EVENT_SCHEMAS['plan.validation_failed'].v).toBe(4);
+    // v5 since KAR-23.13: two more again, `TOOL_PERMISSION_UNSCHEDULABLE` and
+    // `TOOL_COMMAND_REFUSED` — a tool node's static refusals, moved from
+    // execution (where they killed fourteen nodes in a second) to validation.
+    expect(EVENT_SCHEMAS['plan.validation_failed'].v).toBe(5);
   });
 
   it('accepts the diagnostics verbatim, with the version and the rejected hash', () => {

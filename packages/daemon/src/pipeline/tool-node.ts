@@ -137,19 +137,25 @@ import {
   SWEEP_KILL_GRACE_MS,
   sandboxedCommand,
 } from '@DeFlow/adapters';
-import type { Clock, Handle, NodeId, PlanNode, StartNode, ToolNode } from '@DeFlow/core';
+import type {
+  Clock,
+  Handle,
+  NodeId,
+  PermissionLevel,
+  PlanNode,
+  StartNode,
+  ToolNode,
+} from '@DeFlow/core';
 import {
-  destructiveShellLine,
   EVENT_CURRENT_VERSIONS,
-  FULL_IS_NOT_A_SANDBOX,
   ikey as makeIkey,
   NodeFailureError,
   pathIsInside,
-  reasonCode,
   requestHash,
   resolvePosix,
   sha256Hex,
   TOOL_RESULT_SCHEMA_ID,
+  toolNodeRefusals,
 } from '@DeFlow/core';
 import { putBlob } from '@DeFlow/ledger';
 import { Buffer } from 'node:buffer';
@@ -212,14 +218,46 @@ function toolNodeOf(command: StartNode, ctx: ExecContext): ToolNode {
 }
 
 /**
- * The `run` line of a node this daemon can perform, or a refusal.
+ * KAR-23.13 — the three static refusals, applied rather than implemented.
+ *
+ * `toolNodeRefusals` is the one hand-written copy of each of these sentences in
+ * the workspace, and `packages/core/src/validate-plan.ts` files the same three
+ * as repairable diagnostics before the run starts. What is here is the
+ * **backstop**, and it is not redundant: `byNodeType` routes on node *type*, so
+ * a resumed run, a plan document compiled by an older build, a patch path or a
+ * hand-written graph reaches `perform()` without having passed today's
+ * validator. Defence in depth — nothing is relaxed by the move, and the same
+ * three conditions still fail the same node with the same reasons at the same
+ * moment.
+ *
+ * `[0]` and not the whole list: a `NodeFailure` names one reason, and the rule
+ * module returns them in `perform()`'s own order so the first is the one this
+ * function has always thrown.
+ */
+function refuseStatically(node: ToolNode, at: NodeId, permission: PermissionLevel): void {
+  const [refusal] = toolNodeRefusals(
+    // `command.permission`, so run time judges the level actually being
+    // executed. `decide.ts` copies it verbatim from the plan and never from the
+    // projection, so it is the same value validation judged.
+    { id: at, permission, tool: node.tool },
+    PERFORMABLE_TOOL_KINDS,
+  );
+  if (refusal === undefined) return;
+  throw new NodeFailureError(refusal.message, {
+    reason: refusal.reason,
+    class: 'permanent',
+    detail: { ...refusal.detail },
+  });
+}
+
+/**
+ * The `run` line of a node whose kind this daemon can perform.
  *
  * Exhaustive over `ToolKind`, so adding a fourth kind to `ToolNodeSchema` is a
- * compile error here until somebody decides what it means. The `mcp` and `http`
- * arms are the **run-time backstop** for the plan-time diagnostic
- * (`TOOL_KIND_UNPERFORMABLE`): `byNodeType` routes on node *type*, so a plan
- * compiled by an older build, a patch path or a hand-written document would
- * otherwise fall straight into the script spawn path below.
+ * compile error here until somebody decides what it means. The refusal for the
+ * kinds with no performer is `refuseStatically`'s and has already run by the
+ * time this is called; the `never` arms are what makes that a compiler-checked
+ * claim rather than a comment.
  */
 function scriptOf(node: ToolNode, at: NodeId): { readonly run: string; readonly cwd: string } {
   const tool = node.tool;
@@ -401,44 +439,19 @@ async function spawnOrRefuse(
 export function toolNodePerformer(options: LiveExecutionOptions, cwd: string): NodePerformer {
   return async (command: StartNode, ctx: ExecContext): Promise<void> => {
     const node = toolNodeOf(command, ctx);
+
+    // SECURITY (3, 4, 8) — the three refusals that are pure functions of plan
+    // content: `permission: 'full'`, an unperformable `tool.kind`, and the F5.6
+    // deny list on the run line. All three are also refused at validation now
+    // (KAR-23.13); this is the backstop for the paths validation does not gate,
+    // and it runs before a worktree exists exactly as it always did.
+    refuseStatically(node, command.node, command.permission);
+
     const script = scriptOf(node, command.node);
 
     // The path the worktree *will* have, so everything refusable is decided
     // against the real level and the real root without provisioning anything.
     const worktree = worktreePathFor(cwd, ctx.runId, command.node);
-
-    // SECURITY (3): `full` has no enforcement and no authorisation path today.
-    if (command.permission === 'full') {
-      throw new NodeFailureError(
-        `tool node ${command.node} asks for permission level 'full', and a tool node's run line ` +
-          `is plan content: ${FULL_IS_NOT_A_SANDBOX} No run-level opt-in authorises it today, so ` +
-          'it is refused rather than run as the operator',
-        {
-          reason: 'safety.permission-unschedulable',
-          class: 'permanent',
-          detail: { node: command.node, permission: command.permission },
-        },
-      );
-    }
-
-    // SECURITY (8): the F5.6 deny list, before a spawn and before a worktree.
-    // A refusal, not a retry: the verdict is a pure function of the command.
-    const refusal = destructiveShellLine(
-      script.run,
-      { worktree, cwd: worktree, scrubbedEnv: [] },
-      TOOL_SHELL,
-    );
-    if (refusal !== null) {
-      throw new NodeFailureError(
-        `tool node ${command.node} was refused before spawn: ${reasonCode(refusal)} — a plan ` +
-          'script is not a licence to run infrastructure actions',
-        {
-          reason: 'safety.execution-boundary',
-          class: 'permanent',
-          detail: { node: command.node, rule: refusal.detail ?? refusal.code },
-        },
-      );
-    }
 
     // SECURITY (1, 2, 6): the wrapper, the level's prerequisites and the policy
     // document — all decided here, all throwing a permanent refusal when this

@@ -1029,15 +1029,18 @@ export type {
   PlannerCapabilityAnswer,
   PlannerFact,
   PlannerPacketInput,
+  PlannerPerformableSet,
   PlannerSegmentKind,
 } from './planner-packet.ts';
 export {
   buildPlannerPacket,
   CAPABILITY_SEGMENT_ID,
   ForeignSegmentInPlannerPacket,
+  PLAN_RULES_SEGMENT_ID,
   PLANNER_SEGMENT_KINDS,
   renderCapabilitySegmentText,
   renderFactSegmentText,
+  renderPlanRulesSegmentText,
 } from './planner-packet.ts';
 // KAR-27.3 AC1 — when a framing, recon or planner turn is in flight, derived
 // from the ledger. Exported because the web folds the same answer for its own
@@ -1353,6 +1356,13 @@ export {
 // same style as `Clock` and `Db`; core owns no BPE table.
 export type { Tokenizer } from './tokenizer.ts';
 export { contextFillPercent } from './tokenizer.ts';
+// KAR-23.13 — a tool node's three static refusals, derived once and applied by
+// both plan validation and the performer.
+export type { ToolNodeRefusal, ToolNodeUnderRule } from './tool-node-rules.ts';
+export {
+  PLAN_TIME_COMMAND_CONTEXT_ROOT,
+  toolNodeRefusals,
+} from './tool-node-rules.ts';
 // KAR-23.9 — what a script tool node's `node.completed` files its output under.
 export type { ToolResult } from './tool-result.ts';
 export { TOOL_RESULT_SCHEMA_ID, ToolResultSchema } from './tool-result.ts';

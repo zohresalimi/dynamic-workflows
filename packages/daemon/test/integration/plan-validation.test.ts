@@ -330,6 +330,64 @@ suite('EPIC-11-S12 — validation runs on every patched plan, not only on v1', (
     }
   });
 
+  it("rejects a patch inserting a full tool node, even with decision 'auto' (KAR-23.13)", async ({
+    tmp,
+  }) => {
+    // The same guarantee, for the refusal that actually killed a run on
+    // 2026-08-24: `validatePlanVersion` runs first and unconditionally, so
+    // `commitPatchedPlan` inherits the new check with no call-site edit and a
+    // patch cannot smuggle a `full` tool node past it either.
+    const db = openLedger(tmp);
+    try {
+      const v3 = await committedV3(db, tmp);
+      const v4 = await addressed(
+        parsed(
+          [
+            ...(v3.nodes as unknown as Record<string, unknown>[]),
+            {
+              id: 'branch-setup',
+              title: 'Set up the branch',
+              type: 'tool',
+              deps: [],
+              lifecycle: 'active',
+              reads: [],
+              writes: [],
+              permission: 'full',
+              pathScopes: { write: [] },
+              returns: { schemaId: 'DeFlow.toolresult.v1', maxTokens: 1500 },
+              effectClass: 'mutating',
+              tool: { kind: 'script', run: 'git checkout -b feature', cwd: '.' },
+            },
+          ],
+          { version: 4, parent: v3.planHash },
+        ),
+      );
+
+      const outcome = await commitPatchedPlan({
+        db,
+        runDir: join(tmp, 'runs', RUN),
+        graph: v4,
+        spec: SPEC,
+        caps: CAPS,
+        estimatePacketTokens: () => 0,
+        refs: checkerFor(tmp),
+        basePlanHash: v3.planHash,
+        patchId: 'patch_01j9v1s5t1m1q9x8y7z6w5v4ua',
+        decision: DECISION,
+        by: 'planner',
+        planner: PLANNER,
+        ts: T0,
+        epoch: EPOCH,
+      });
+
+      expect(outcome.outcome).toBe('rejected');
+      expect(outcome.diagnostics.map((one) => one.code)).toContain('TOOL_PERMISSION_UNSCHEDULABLE');
+      expect(readPlanDoc(db, v4.planHash)).toBeNull();
+    } finally {
+      db.close();
+    }
+  });
+
   it('rejects a patch whose new node reads a key no ancestor writes, before anything commits', async ({
     tmp,
   }) => {
@@ -847,5 +905,45 @@ suite('KAR-23.9 — validatePlanVersion refuses a plan this daemon cannot perfor
     );
 
     expect(diagnostics).toEqual([]);
+  });
+});
+
+suite('KAR-23.13 — a tool node’s static refusals reach every door for free', () => {
+  const toolNode = (over: Record<string, unknown>) => ({
+    id: 'branch-setup',
+    title: 'Set up the branch',
+    type: 'tool',
+    deps: [],
+    lifecycle: 'active',
+    reads: [],
+    writes: [],
+    permission: 'worktree',
+    pathScopes: { write: [] },
+    returns: { schemaId: 'DeFlow.toolresult.v1', maxTokens: 1500 },
+    effectClass: 'mutating',
+    tool: { kind: 'script', run: 'git checkout -b feature', cwd: '.' },
+    ...over,
+  });
+
+  it('refuses a full tool node at the one entry point, with no call-site change', async ({
+    tmp,
+  }) => {
+    const diagnostics = await validate(parsed([toolNode({ permission: 'full' })]), tmp);
+
+    expect(diagnostics.filter((one) => one.code === 'TOOL_PERMISSION_UNSCHEDULABLE')).toMatchObject(
+      [{ severity: 'error', node: 'branch-setup', key: 'full' }],
+    );
+  });
+
+  it('refuses a deny-listed run line, and leaves the everyday ones alone', async ({ tmp }) => {
+    const refused = await validate(
+      parsed([toolNode({ tool: { kind: 'script', run: 'terraform apply', cwd: '.' } })]),
+      tmp,
+    );
+    expect(refused.filter((one) => one.code === 'TOOL_COMMAND_REFUSED')).toMatchObject([
+      { severity: 'error', node: 'branch-setup', key: 'terraform-apply' },
+    ]);
+
+    expect(await validate(parsed([toolNode({})]), tmp)).toEqual([]);
   });
 });

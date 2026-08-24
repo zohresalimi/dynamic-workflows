@@ -427,6 +427,135 @@ suite('EPIC-11-S1 — three inputs compile to PlanGraph v1', () => {
   });
 });
 
+/**
+ * KAR-23.13 — the 2026-08-24 incident, at the door it should have been stopped
+ * at.
+ *
+ * `run_20260824T174326Z_3b9ba1` validated a plan, fired `run.started`, and lost
+ * all fourteen of its nodes inside one second: one
+ * `safety.permission-unschedulable` for a `tool` node at `full`, and thirteen
+ * `dependency.failed` behind it. `permission` is plan content, so the whole
+ * incident was knowable here.
+ */
+suite('KAR-23.13 — a full tool node never reaches run.started', () => {
+  /** The incident's own node: a branch checkout, asking for `full`. */
+  const toolAt = (permission: string, run = 'git checkout -b feature') => ({
+    id: 'branch-setup',
+    title: 'Set up the branch',
+    type: 'tool',
+    deps: [],
+    lifecycle: 'active',
+    reads: [],
+    writes: [],
+    permission,
+    pathScopes: { write: ['packages/ui/**'] },
+    returns: { schemaId: 'DeFlow.toolresult.v1' },
+    tool: { kind: 'script', run, cwd: '.' },
+    effectClass: 'mutating',
+  });
+
+  it('refuses it with a repairable TOOL_PERMISSION_UNSCHEDULABLE and compiles the repair', async ({
+    tmp,
+  }) => {
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      // The planner's first answer is the incident's plan; its second is the
+      // repair the diagnostic asks for — the level the *previous* run's node
+      // for the same work used, and which ran fine.
+      const agent = scripted(
+        present(returned([agentNode('implement'), toolAt('full')])),
+        present(returned([agentNode('implement'), toolAt('worktree')])),
+      );
+
+      const result = await compile(db, tmp, agent);
+      if (result.outcome !== 'compiled') throw new Error(JSON.stringify(result, null, 2));
+
+      const events = readRange(db, RUN, 0, 500).events;
+      const failures = events.filter((row) => row.kind === 'plan.validation_failed');
+      expect(failures).toHaveLength(1);
+      const diagnostics = (failures[0]?.payload as Record<string, unknown>).diagnostics as {
+        code: string;
+        node: string;
+        key: string;
+        message: string;
+      }[];
+      const refused = diagnostics.filter((one) => one.code === 'TOOL_PERMISSION_UNSCHEDULABLE');
+      expect(refused).toMatchObject([{ node: 'branch-setup', key: 'full' }]);
+      expect(refused[0]?.message).toContain('full is not a sandbox');
+
+      // §3.5's repair loop, unmodified: the diagnostic reaches the planner
+      // verbatim on the retry, and the repaired plan compiles.
+      expect(agent.prompts).toHaveLength(2);
+      expect(agent.prompts[0]).not.toContain('TOOL_PERMISSION_UNSCHEDULABLE');
+      expect(agent.prompts[1]).toContain('TOOL_PERMISSION_UNSCHEDULABLE');
+      expect(agent.prompts[1]).toContain('Fix exactly these');
+      expect(result.plan.nodes.find((node) => node.id === 'branch-setup')?.permission).toBe(
+        'worktree',
+      );
+
+      // The point of the whole story: nothing started. On 2026-08-24 this is
+      // where `run.started` and fourteen node failures were.
+      expect(events.map((row) => row.kind)).not.toContain('run.started');
+      expect(events.map((row) => row.kind)).not.toContain('node.started');
+    } finally {
+      db.close();
+    }
+  });
+
+  it('refuses a deny-listed run line the same way, and never spawns it', async ({ tmp }) => {
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      const infra = () =>
+        present(
+          returned([agentNode('implement'), toolAt('worktree', 'terraform apply -auto-approve')]),
+        );
+      const agent = scripted(infra(), infra());
+
+      const result = await compile(db, tmp, agent);
+
+      expect(result.outcome).toBe('needs-human');
+      const failures = readRange(db, RUN, 0, 500).events.filter(
+        (row) => row.kind === 'plan.validation_failed',
+      );
+      expect(failures).toHaveLength(2);
+      const diagnostics = (failures[0]?.payload as Record<string, unknown>).diagnostics as {
+        code: string;
+        key: string;
+      }[];
+      expect(diagnostics.filter((one) => one.code === 'TOOL_COMMAND_REFUSED')).toMatchObject([
+        { key: 'terraform-apply' },
+      ]);
+    } finally {
+      db.close();
+    }
+  });
+
+  it('teaches the planner the rule on attempt 0, before it has cost a turn', async ({ tmp }) => {
+    // The economic half of the story. Three consecutive runs had their *first*
+    // plan rejected (MET-1007); a rule the planner only meets as a diagnostic
+    // is a rule that arrives one maximum-effort turn too late.
+    const db = openLedger(tmp);
+    try {
+      seedCapabilities(db);
+      const agent = scripted(present(returned([agentNode('implement')])));
+
+      const result = await compile(db, tmp, agent);
+      if (result.outcome !== 'compiled') throw new Error(JSON.stringify(result, null, 2));
+
+      expect(agent.prompts).toHaveLength(1);
+      expect(agent.prompts[0]).toContain("'full' is not available to a tool node");
+      expect(agent.prompts[0]).toContain('tool.kind must be script');
+      expect(agent.prompts[0]).toContain('terraform apply');
+      expect(agent.prompts[0]).toContain('agent, gate and tool');
+      expect(agent.prompts[0]).toContain('pathScopes.write: []');
+    } finally {
+      db.close();
+    }
+  });
+});
+
 suite('EPIC-11-S2 — the planner sees the spec, the facts and the capability list', () => {
   it('assembles exactly three input groups and no foreign transcript', async ({ tmp }) => {
     const db = openLedger(tmp);

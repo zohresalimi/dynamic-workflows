@@ -1089,3 +1089,40 @@ registerUpcaster({
   },
   up: (payload) => payload,
 });
+
+/**
+ * `plan.validation_failed` v4 → v5 (KAR-23.13). See schemas/CHANGELOG.md.
+ *
+ * v5 widens `diagnostics[].code` by two more members,
+ * `TOOL_PERMISSION_UNSCHEDULABLE` and `TOOL_COMMAND_REFUSED` — the two static
+ * refusals a `tool` node used to earn at execution and now earns at validation.
+ * On 2026-08-24 `run_20260824T174326Z_3b9ba1` validated, fired `run.started`,
+ * and lost all fourteen of its nodes inside a second to the first of them plus
+ * thirteen `dependency.failed` behind it. Nothing else changes, so the hop is
+ * the identity for the reason every enum-widening hop in this registry is:
+ * every v4 payload is already a valid v5 one, and no v4 payload can have
+ * carried a code that did not exist yet.
+ */
+registerUpcaster({
+  kind: 'plan.validation_failed',
+  from: 4,
+  to: PlanValidationFailedSchema,
+  fixture: {
+    version: 1,
+    planHash: `sha256-${'c'.repeat(64)}`,
+    by: 'planner',
+    attempt: 0,
+    diagnostics: [
+      {
+        severity: 'error',
+        code: 'TOOL_KIND_UNPERFORMABLE',
+        node: 'post-webhook',
+        key: 'http',
+        message:
+          "tool node 'post-webhook' is of kind 'http', and this daemon can run tool nodes of " +
+          'kind script only. Express the call as a script node, or drop it.',
+      },
+    ],
+  },
+  up: (payload) => payload,
+});

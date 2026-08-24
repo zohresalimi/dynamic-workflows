@@ -438,6 +438,11 @@ suite('EPIC-10-S24, S28 — what the planner is handed (test plan #7)', () => {
         // about what recon leaves behind, and an empty list is the honest
         // answer for a scene that never probed a binary.
         capabilities: [],
+        // KAR-23.13 — what the daemon running this plan can perform, which the
+        // `plan-rules` brief interpolates. `compilePlanV1` reads it from
+        // `exec/performable.ts`; this scene states the same two constants
+        // rather than importing the pipeline into a recon test.
+        performable: { nodeTypes: ['agent', 'gate', 'tool'], toolKinds: ['script'] },
       });
 
       const keys = packet.segments
@@ -449,14 +454,18 @@ suite('EPIC-10-S24, S28 — what the planner is handed (test plan #7)', () => {
       // AC7 — no transcript, in any form.
       expect(packet.segments.some((segment) => segment.kind === 'history.summary')).toBe(false);
       expect(packet.totals.byKind['history.summary']).toBe(0);
-      // The trailing `fact` is KAR-11.1's capability-list segment: one per
-      // packet, always present, and empty-but-stated for a scene with no
-      // probed rows (`renderCapabilitySegmentText`).
+      // The `task.brief` after the pinned group is KAR-23.13's `plan-rules`:
+      // the rules validation will enforce, said up front so the planner does
+      // not learn them from a rejection. The trailing `fact` is KAR-11.1's
+      // capability-list segment: one per packet, always present, and
+      // empty-but-stated for a scene with no probed rows
+      // (`renderCapabilitySegmentText`).
       expect(packet.segments.map((segment) => segment.kind)).toMatchInlineSnapshot(`
         [
           "pinned.spec",
           "pinned.spec",
           "pinned.constraints",
+          "task.brief",
           "fact",
           "fact",
           "fact",

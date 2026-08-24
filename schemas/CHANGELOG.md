@@ -412,6 +412,44 @@ payload schema that accepted only valid `NodeId`s would make the append throw on
 faults the validator exists to catch, which is a worse failure than the one it was preventing. The
 sentinel's parentheses keep it outside the charset a real id could ever occupy.
 
+### plan.validation_failed v5
+
+**KAR-23.13.** `diagnostics[].code` widens by two more members, `TOOL_PERMISSION_UNSCHEDULABLE` and
+`TOOL_COMMAND_REFUSED`: a `tool` node asking for `permission: 'full'`, and a `tool` node whose `run`
+line the F5.6 destructive-command deny list refuses.
+
+| Change                                 | Kind     | Why it is not lossy                                                                                                   |
+| -------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `diagnostics[].code` gains two members | widening | Every v4 payload is already a valid v5 one — the hop is the identity — and no v4 payload can have carried either code. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the check moved.** On 2026-08-24, `run_20260824T174326Z_3b9ba1` validated its plan, fired
+`run.started`, and lost all fourteen of its nodes inside one second: one
+`safety.permission-unschedulable` — _"tool node branch-setup asks for permission level full"_ — and
+thirteen `dependency.failed` behind it. **The refusal was correct and is unchanged.** What was wrong
+is where it was discovered: `node.type`, `tool.kind`, `permission` and the `run` line are all plan
+content, fixed the moment the planner wrote the document, and every one of them was knowable when
+validation ran. The previous run's node for the same work asked for `worktree` and ran fine; this one
+asked for `full`, and the planner was never told it had made a refusable choice.
+
+`packages/core/src/tool-node-rules.ts` is now the single implementation of all three refusals;
+`validate-plan.ts` files them as repairable diagnostics and `pipeline/tool-node.ts` throws them as
+`NodeFailure`s. The performer's copy stays as the **backstop**, because a plan reaches `perform()` by
+paths validation does not gate — a resumed run, a document compiled by an older build, a patch.
+
+**Why the deny list is included even though `CommandContext` carries paths.** Three of its rules read
+the worktree, and at plan time there is no worktree. They judge the line against a synthetic root
+(`PLAN_TIME_COMMAND_CONTEXT_ROOT`), with `cwd` resolved from the node's own `tool.cwd` exactly as
+`perform()` resolves it against the real one. Every *relative* argument gets the identical verdict;
+the only divergence is an *absolute* path that happens to sit inside the real worktree — a path a
+planner cannot know and must never write. So plan time is equal-or-stricter than run time, never
+laxer, and a strictly-stricter verdict costs one repairable diagnostic rather than a security hole.
+
+**Named after the run-time reason it prevents.** `TOOL_PERMISSION_UNSCHEDULABLE` mirrors
+`safety.permission-unschedulable`, so an operator grepping a ledger for the incident finds both ends
+of it — the diagnostic that should have caught it and the failure that did.
+
 ### plan.validation_failed v4
 
 **KAR-23.9.** `diagnostics[].code` widens by two members, `NODE_TYPE_UNPERFORMABLE` and

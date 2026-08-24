@@ -715,3 +715,60 @@ suite('KAR-23.9 — the run-time backstop refuses before a worktree exists', () 
     expect(failure.class).toBe('permanent');
   });
 });
+
+/**
+ * KAR-23.13 — defence in depth, stated as a test rather than as a comment.
+ *
+ * Plan validation now refuses all three of these before a run starts, which is
+ * where the 2026-08-24 incident should have ended. The performer's own copies
+ * stay, because a plan reaches `perform()` by paths validation does not gate: a
+ * resumed run, a plan document compiled by an older build, a hand-written
+ * graph. Every assertion above this suite is the unmodified KAR-23.9 battery
+ * and is the real regression guard on the refactor; this suite is the sentence
+ * those assertions are proving.
+ */
+suite('KAR-23.13 — the performer still refuses, after the rules moved to core', () => {
+  it('still refuses a full node at execution, before a worktree exists', async ({ tmp }) => {
+    const { failure, created } = await refusal(
+      tmp,
+      toolNode({ kind: 'script', run: 'git checkout -b feature' }, { permission: 'full' }),
+    );
+
+    expect(failure.reason).toBe('safety.permission-unschedulable');
+    expect(failure.class).toBe('permanent');
+    expect(failure.message).toContain('full is not a sandbox');
+    expect(created).toBe(0);
+  });
+
+  it('still refuses an unperformable kind at execution', async ({ tmp }) => {
+    const { failure, created } = await refusal(
+      tmp,
+      toolNode({ kind: 'http', method: 'POST', url: 'https://example.com/hook' }),
+    );
+
+    expect(failure.reason).toBe('adapter.capability-missing');
+    expect(created).toBe(0);
+  });
+
+  it('still refuses a deny-listed run line at execution', async ({ tmp }) => {
+    const { failure, created } = await refusal(
+      tmp,
+      toolNode({ kind: 'script', run: 'terraform apply -auto-approve' }),
+    );
+
+    expect(failure.reason).toBe('safety.execution-boundary');
+    expect(created).toBe(0);
+  });
+
+  it('reports the first refusal a two-fault node earns, in perform() order', async ({ tmp }) => {
+    // `toolNodeRefusals` returns every refusal so the planner can repair a
+    // two-fault node in one turn; a `NodeFailure` names one reason, and it is
+    // the one this performer has always thrown.
+    const { failure } = await refusal(
+      tmp,
+      toolNode({ kind: 'script', run: 'terraform apply' }, { permission: 'full' }),
+    );
+
+    expect(failure.reason).toBe('safety.permission-unschedulable');
+  });
+});
