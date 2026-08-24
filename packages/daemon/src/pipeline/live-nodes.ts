@@ -759,9 +759,12 @@ export function createLiveRunExecution(options: LiveExecutionOptions): RunExecut
         // advancing an injected clock per tick would reach a node's own timeout
         // in simulated time while the child was still working.
         tickStepMs: 0,
-        // A run of real agent turns is minutes, not the executor's one-minute
-        // default; the wedge budget has to be longer than the work or every
-        // long node is reported as a wedge.
+        // KAR-23.12 — thirty minutes in which this run's log did not move and
+        // nothing was in flight. Not thirty minutes of run: the budget used to
+        // be a whole-run deadline computed once per dispatch, and one dispatch
+        // drives the entire DAG, so five real agent nodes crossed it and the
+        // fifth was abandoned mid-turn. A live child is never a wedge now, so
+        // this is a genuine no-progress ceiling on any machine.
         budgetMs: 30 * 60_000,
       };
     },

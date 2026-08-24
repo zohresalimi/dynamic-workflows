@@ -324,9 +324,11 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
    * KAR-19.4 — the head this run's log was at when the executor last returned
    * without ending it.
    *
-   * A run halted on a budget ceiling or an open human gate is not finished and
-   * must stay drivable, so it cannot be remembered as *done*; re-driving it on
-   * every tick, on the other hand, is a fold a second for as long as nobody
+   * A run halted on a budget ceiling, an open human gate, or — since KAR-23.12
+   * — with a node the ledger says is still running that this loop is not
+   * holding a promise for, is not finished and must stay drivable, so it cannot
+   * be remembered as *done*; re-driving it on every tick, on the other hand, is
+   * a fold a second for as long as nobody
    * answers. The head seq is the honest middle: nothing has happened to this
    * run since the executor last looked, so there is nothing new to decide. One
    * covering-index seek, and the moment the operator answers — a `run.resumed`,

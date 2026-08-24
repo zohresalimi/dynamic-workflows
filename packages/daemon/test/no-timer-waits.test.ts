@@ -18,6 +18,8 @@
  */
 import { expect, it, describe as suite } from 'vitest';
 import {
+  BARE_WALL_CLOCK_SCOPE,
+  checkNoBareWallClock,
   checkNoTimerWaits,
   checkTimerAllowlistIsLinted,
   describe as render,
@@ -55,5 +57,37 @@ suite('the only wait in the orchestrator is a node_wake row (AC1)', () => {
 
   it('is enforced by the linter too, global by global', () => {
     expect(render(checkTimerAllowlistIsLinted(readText('.oxlintrc.json')))).toBe('');
+  });
+});
+
+/**
+ * KAR-23.12 — the same rule, for a measurement rather than a wait.
+ *
+ * The run loop's wedge budget was two bare wall-clock reads. Nothing could
+ * advance them, so nothing could drive the budget from a spec — and a budget
+ * that measured *the length of the run* rather than *the length of a silence*
+ * survived until it abandoned a live node and the run was concluded as failed.
+ * It takes a `Clock` now, and this is what stops the reads coming back.
+ */
+suite('the run loop measures time through the Clock port too (KAR-23.12)', () => {
+  it('scopes the rule to the scheduler loop and says so', () => {
+    expect(BARE_WALL_CLOCK_SCOPE).toBe('packages/daemon/src/exec/');
+  });
+
+  it('finds no bare wall-clock read in it', () => {
+    const sources = productionSources('packages/daemon');
+    expect(
+      sources.filter((file) => file.path.startsWith(BARE_WALL_CLOCK_SCOPE)).length,
+    ).toBeGreaterThan(0);
+    expect(render(checkNoBareWallClock(sources))).toBe('');
+  });
+
+  it('and that is a real result, not an empty scan', () => {
+    const mutated = productionSources('packages/daemon').map((file) => ({
+      ...file,
+      text: `${file.text}\nexport const at = () => Date.now();\n`,
+    }));
+    const scoped = mutated.filter((file) => file.path.startsWith(BARE_WALL_CLOCK_SCOPE));
+    expect(checkNoBareWallClock(mutated).length).toBe(scoped.length);
   });
 });

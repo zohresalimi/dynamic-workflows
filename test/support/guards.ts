@@ -2615,6 +2615,51 @@ export function checkNoTimerWaits(
 }
 
 /**
+ * KAR-23.12 — NF9's other half in the run loop: the scheduler reads no bare
+ * wall clock.
+ *
+ * `setTimeout` is how a *wait* stops being durable; `Date.now()` is how a
+ * *measurement* stops being drivable. The run executor's wedge budget was two
+ * bare `Date.now()` reads, and neither a spec nor a replay could move them —
+ * which is part of why a budget that measured the wrong thing survived as long
+ * as it did. It takes a `Clock` now, so time enters here the way it enters
+ * everywhere else.
+ *
+ * Deliberately scoped to `packages/daemon/src/exec/` rather than to the whole
+ * daemon. A repo-wide ban would light up modules that legitimately stamp a
+ * real instant, and widening it is a separate story with its own argument to
+ * make; what this guard protects is the loop that decides when a run is over.
+ */
+export const BARE_WALL_CLOCK_SCOPE = 'packages/daemon/src/exec/';
+
+/** `Date.now(`, assembled so this file never trips its own rule. */
+const BARE_WALL_CLOCK = new RegExp(`(?<![.\\w])Date\\s*\\.\\s*${'now'}\\s*\\(`);
+
+export function checkNoBareWallClock(
+  files: readonly SourceFile[],
+  scope: string = BARE_WALL_CLOCK_SCOPE,
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const file of files) {
+    if (!file.path.startsWith(scope)) continue;
+    const lines = codeOnly(file.text).split('\n');
+    for (const [index, line] of lines.entries()) {
+      if (!BARE_WALL_CLOCK.test(line)) continue;
+      violations.push({
+        where: `${file.path}:${index + 1}`,
+        message:
+          `${file.path} reads the wall clock directly. Time enters the daemon through the ` +
+          'Clock port (NF9), including the run loop’s own no-progress budget: a measurement ' +
+          'nothing can advance is one no spec can drive and no replay can reproduce, which is ' +
+          'how KAR-23.12’s budget came to measure the length of a run rather than the length ' +
+          'of a silence.',
+      });
+    }
+  }
+  return violations;
+}
+
+/**
  * The other half of the same rule: oxlint refuses a second call site in the
  * editor, at the moment it is typed, and the allowlisted path is named in the
  * config so the exemption is a decision somebody wrote down rather than a file
