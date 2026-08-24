@@ -684,6 +684,21 @@ suite('KAR-23.9 — the run-time backstop refuses before a worktree exists', () 
     expect(created).toBe(0);
   });
 
+  it('refuses a force-push, which the sandbox alone cannot tell from a fetch', async ({ tmp }) => {
+    // The sandbox gates by write-root and by domain. A push to a remote the
+    // node is already allowed to reach looks exactly like a fetch to it, so
+    // the deny list is the only layer that can refuse this — and it must be
+    // reached for `git`, not just for the binaries in `DESTRUCTIVE_COMMANDS`.
+    const { failure, created } = await refusal(
+      tmp,
+      toolNode({ kind: 'script', run: 'git push --force origin main', cwd: '.' }),
+    );
+    expect(failure.reason).toBe('safety.execution-boundary');
+    expect(failure.class).toBe('permanent');
+    expect(failure.detail).toMatchObject({ rule: 'git-push-force' });
+    expect(created).toBe(0);
+  });
+
   it('types a spawn that never happened as adapter.spawn-failed, not internal', async ({ tmp }) => {
     // A `cwd` inside the worktree that the worktree does not have: it passes
     // the path-scope check (it really is inside) and then `spawn` answers

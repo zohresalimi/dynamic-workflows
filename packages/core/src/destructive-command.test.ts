@@ -25,7 +25,7 @@
  */
 
 import { expect, it, describe as suite } from 'vitest';
-import { destructiveCommand } from './destructive-command.ts';
+import { destructiveCommand, destructiveShellLine } from './destructive-command.ts';
 import {
   decidePermission,
   type PermissionRequest,
@@ -323,6 +323,106 @@ suite('the layer is a pure predicate over one command', () => {
 
     for (const [command, args] of inputs) {
       const reason = destructiveCommand(command, args, context);
+      expect(reason === null || typeof reason.code === 'string').toBe(true);
+    }
+  });
+});
+
+/**
+ * KAR-23.9 — the same layer applied to a whole shell *line*, which is the form
+ * a `tool` node's `run:` arrives in.
+ *
+ * The rule this suite exists to hold: **every binary this module writes a rule
+ * for must be reachable from the line scan.** The first version derived the
+ * scan's set from `DESTRUCTIVE_COMMANDS` alone, so `git`, `rm`, `psql` and
+ * `mysql` — the four binaries whose rules are written out by hand rather than
+ * tabulated — were silently exempt: `run: 'git push --force origin main'`
+ * answered `null` and reached the shell, while `terraform apply` on the very
+ * same line was refused. The sandbox is no backstop for that one, because it
+ * gates by write-root and by domain and cannot tell a push to an already
+ * allowed remote from a fetch.
+ *
+ * The scan is still not a decision procedure — `$X`, aliases and a base64 pipe
+ * walk past it by construction (§10.4) — so the rows below are the plain,
+ * unobfuscated spellings only. Missing *those* is a gap; missing the rest is
+ * the documented design.
+ */
+suite('a shell line is scanned for every binary this module has a rule for', () => {
+  const CTX = { worktree: WT, cwd: WT, scrubbedEnv: [] as readonly string[] };
+  const scan = (line: string): string | null => {
+    const reason = destructiveShellLine(line, CTX, '/bin/sh');
+    return reason === null ? null : reasonCode(reason);
+  };
+
+  it('routes a `git` token to the git rules the module already carries', () => {
+    expect(scan('git push --force origin main')).toBe('destructive-command:git-push-force');
+    expect(scan('git push -f origin main')).toBe('destructive-command:git-push-force');
+    expect(scan(`git reset --hard ${TMP}/elsewhere`)).toBe('destructive-command:git-reset-hard');
+  });
+
+  it('still lets the safe force-push through, on a line as on a command', () => {
+    // The one rule in this module whose purpose is to *not* fire (AC4).
+    expect(scan('git push --force-with-lease origin main')).toBeNull();
+    expect(scan('git push origin main')).toBeNull();
+    expect(scan('git status && git log --oneline -5')).toBeNull();
+  });
+
+  it('routes an `rm` token to the depth rule', () => {
+    expect(scan('rm -rf /')).toBe('destructive-command:rm-recursive-shallow');
+    expect(scan('rm -rf /usr/local')).toBe('destructive-command:rm-recursive-shallow');
+    // The depth rule is on the resolved path, so the everyday build verb is
+    // not a question — the whole reason §10.4 counts depth instead of names.
+    expect(scan('rm -rf dist')).toBeNull();
+    expect(scan('rm -rf node_modules')).toBeNull();
+  });
+
+  it('routes a database client token to the remote-host rule', () => {
+    expect(scan('psql -h prod.db.example.com -c "drop table users"')).toBe(
+      'destructive-command:psql-remote',
+    );
+    expect(scan('mysql --host=db.prod.internal -e "delete from users"')).toBe(
+      'destructive-command:mysql-remote',
+    );
+    expect(scan("psql -h localhost -c 'select 1'")).toBeNull();
+  });
+
+  it('keeps catching the tabulated binaries anywhere on the line', () => {
+    expect(scan('terraform apply -auto-approve')).toBe('destructive-command:terraform-apply');
+    expect(scan('git add -A && terraform apply')).toBe('destructive-command:terraform-apply');
+    expect(scan('kubectl --namespace prod delete pod x')).toBe(
+      'destructive-command:kubectl-delete',
+    );
+  });
+
+  it("judges each command in the line against its own arguments, not the line's", () => {
+    // `/usr` belongs to `ls`, not to the `rm`, and the depth rule must not
+    // reach across the `&&` and gate a removal of `./dist` on it.
+    expect(scan('rm -rf ./dist && ls /usr')).toBeNull();
+    expect(scan('git add -A ; rm -rf ./build | tee /log')).toBeNull();
+    // …and a separator does not launder the command that follows it.
+    expect(scan('ls /usr && rm -rf /usr')).toBe('destructive-command:rm-recursive-shallow');
+  });
+
+  it('reads a multi-line script the way a `run:` block scalar arrives', () => {
+    // A newline ends a command exactly as `;` does…
+    expect(scan('pnpm build\ngit push --force origin main')).toBe(
+      'destructive-command:git-push-force',
+    );
+    expect(scan('rm -rf ./dist\nls /usr')).toBeNull();
+    // …except the one that is escaped, which continues the command before it.
+    expect(scan('terraform \\\n  apply -auto-approve')).toBe('destructive-command:terraform-apply');
+  });
+
+  it('reports a scrubbed variable the line cannot possibly resolve', () => {
+    const scrubbed = { ...CTX, scrubbedEnv: ['AWS_PROFILE'] };
+    const reason = destructiveShellLine('echo "$AWS_PROFILE"', scrubbed, '/bin/sh');
+    expect(reason === null ? null : reasonCode(reason)).toBe('scrubbed-env:AWS_PROFILE');
+  });
+
+  it('is total: no line throws and every answer is a reason or null', () => {
+    const lines = ['', '   ', 'rm', 'git push', "sh -c '", '$(echo rm) -rf /', '\0', '&& || ; |'];
+    for (const line of lines) {
+      const reason = destructiveShellLine(line, CTX, '/bin/sh');
       expect(reason === null || typeof reason.code === 'string').toBe(true);
     }
   });
