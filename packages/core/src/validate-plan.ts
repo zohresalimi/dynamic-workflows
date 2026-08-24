@@ -29,6 +29,12 @@
  *     `deadline.onTimeout: 'default'` names an option it does not offer. Caught
  *     here rather than six hours later at expiry, on a run nobody is watching,
  *     at the one moment there is no correct automatic action left.
+ *   - **Performability** (KAR-23.9) is the eighth, and it is the check the
+ *     2026-08-24 incident proved was missing: a node of a type — or a `tool`
+ *     node of a kind — the daemon about to run this plan composes no performer
+ *     for. Sixteen nodes were admitted that day for work seven of them could
+ *     never do. The set is an *input*, like `caps`, because this package cannot
+ *     know what the composition root composes.
  *
  * **Diagnostics are values, never exceptions** (§3.5). `PlanCycleError` is
  * caught here and turned into one; nothing else escapes. That is what makes the
@@ -44,10 +50,17 @@
  * (charset half), EPIC-11-S11 · AC1, AC2, AC3, AC4, AC5, AC6, AC7, AC8, AC12
  */
 import { BUDGET_FRACTION_CEILING } from './build-packet.ts';
-import { isHumanNode } from './human-gate.ts';
+import { isHumanNode, SCHEDULER_HANDLED_NODE_TYPES } from './human-gate.ts';
 import { isNodeIdSlug, type NodeId } from './ids.ts';
 import type { PlanDiagnostic } from './plan-diagnostics.ts';
-import type { AgentNode, PermissionLevel, PlanGraph, PlanNode } from './plan-graph.ts';
+import type {
+  AgentNode,
+  NodeType,
+  PermissionLevel,
+  PlanGraph,
+  PlanNode,
+  ToolKind,
+} from './plan-graph.ts';
 import { coveredByGatesOf, revalidateSpecAgainstPlan } from './spec-approval.ts';
 import type { TaskSpec } from './task-spec.ts';
 import { toSingleLine } from './text.ts';
@@ -105,6 +118,27 @@ export interface ValidatePlanOptions {
    * system uses.
    */
   readonly estimatePacketTokens: (node: PlanNode) => number;
+  /**
+   * KAR-23.9 — what the daemon that is going to run this plan can actually
+   * perform.
+   *
+   * **Required, not optional**, and the difference is the whole story. An
+   * optional set with a permissive default would silently switch off the one
+   * check this exists for the day somebody added a call site and forgot it —
+   * which is exactly how a plan with seven unperformable nodes was validated
+   * and admitted on 2026-08-24. `refs`-style optionality is right for a check
+   * that degrades to "we could not ask"; this one does not degrade, it just
+   * stops running.
+   *
+   * Passed in for the same reason `caps` is: `@DeFlow/core` may not know what
+   * `@DeFlow/daemon` composes, and a hardcoded list here would be a second
+   * answer to a question the composition root already answers
+   * (`packages/daemon/src/exec/performable.ts`).
+   */
+  readonly performable: {
+    readonly nodeTypes: readonly NodeType[];
+    readonly toolKinds: readonly ToolKind[];
+  };
   /**
    * The node ids real `git check-ref-format` refused, for the ref
    * `refs/heads/DeFlow/<runId>__<nodeId>` (§3.3).
@@ -472,6 +506,76 @@ function humanDeadlineDiagnostics(plan: PlanGraph): PlanDiagnostic[] {
 }
 
 /* -------------------------------------------------------------------------- *
+ * §3.2 — work nobody can perform
+ * -------------------------------------------------------------------------- */
+
+/**
+ * KAR-23.9 — a node of a type, or a `tool` node of a kind, that the daemon
+ * about to run this plan composes no performer for.
+ *
+ * The economics are the same as every other check in this file, and the
+ * 2026-08-24 incident is the measurement: a `tool` node was admitted, failed
+ * `internal`/`permanent` in under a second, and took fifteen dependants down
+ * with it as `dependency.failed`. Telling the planner once, at compile time, is
+ * strictly better than fifteen failures at node 27 — and it is repairable,
+ * which a run that has already started is not.
+ *
+ * **`human` is never diagnosed.** `decide()` admits it by `SuspendNode` rather
+ * than `StartNode`, so it is answered by a person rather than performed by
+ * anything; `SCHEDULER_HANDLED_NODE_TYPES` is that sentence as a value, and
+ * diagnosing it here would refuse every plan KAR-13.1 exists to make possible.
+ *
+ * The two codes are separate because the repair is different: an unperformable
+ * *type* has to be re-planned as other work, while an unperformable tool *kind*
+ * is the same work expressed another way.
+ */
+function performableDiagnostics(
+  plan: PlanGraph,
+  performable: ValidatePlanOptions['performable'],
+): PlanDiagnostic[] {
+  const types = performable.nodeTypes;
+  const kinds = performable.toolKinds;
+  const scheduled: readonly string[] = SCHEDULER_HANDLED_NODE_TYPES;
+  const diagnostics: PlanDiagnostic[] = [];
+
+  for (const node of plan.nodes) {
+    const type: NodeType = node.type;
+
+    if (!types.includes(type) && !scheduled.includes(type)) {
+      diagnostics.push({
+        severity: 'error',
+        code: 'NODE_TYPE_UNPERFORMABLE',
+        node: node.id,
+        key: type,
+        message: toSingleLine(
+          `node '${node.id}' is a ${type} node, and this daemon composes no performer for ` +
+            `${type} nodes — it would be admitted and fail the moment it started. The node ` +
+            `types it can run are ${[...types].join(', ')} (a human node is answered by a ` +
+            'person rather than performed). Re-plan the work with those.',
+        ),
+      });
+      continue;
+    }
+
+    if (node.type !== 'tool') continue;
+    const kind: ToolKind = node.tool.kind;
+    if (kinds.includes(kind)) continue;
+    diagnostics.push({
+      severity: 'error',
+      code: 'TOOL_KIND_UNPERFORMABLE',
+      node: node.id,
+      key: kind,
+      message: toSingleLine(
+        `tool node '${node.id}' is of kind '${kind}', and this daemon can run tool nodes of ` +
+          `kind ${[...kinds].join(', ')} only. Express the call as a script node, or drop it.`,
+      ),
+    });
+  }
+
+  return diagnostics;
+}
+
+/* -------------------------------------------------------------------------- *
  * the entry point
  * -------------------------------------------------------------------------- */
 
@@ -502,6 +606,7 @@ export function validatePlan(
     ...orphanWriteDiagnostics(plan),
     ...identifierDiagnostics(plan, refused),
     ...capabilityDiagnostics(plan, caps, options.estimatePacketTokens),
+    ...performableDiagnostics(plan, options.performable),
     ...coverageDiagnostics(plan, spec),
     ...humanDeadlineDiagnostics(plan),
   ]);

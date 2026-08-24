@@ -2184,7 +2184,7 @@ export const EVENT_SCHEMAS = {
   'run.kill_failed': { v: 1, payload: RunKillFailedSchema },
   'run.needs_human': { v: 4, payload: RunNeedsHumanSchema },
   'plan.proposed': { v: 2, payload: PlanProposedSchema },
-  'plan.validation_failed': { v: 3, payload: PlanValidationFailedSchema },
+  'plan.validation_failed': { v: 4, payload: PlanValidationFailedSchema },
   'plan.patch.proposed': { v: 3, payload: PlanPatchProposedSchema },
   'plan.patched': { v: 2, payload: PlanPatchedSchema },
   'plan.patch.queued': { v: 1, payload: PlanPatchQueuedSchema },

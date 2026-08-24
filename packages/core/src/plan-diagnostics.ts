@@ -57,6 +57,20 @@ export const PLAN_DIAGNOSTIC_CODES = [
    * option id its own `options` do not offer. Caught here rather than at
    * expiry, six hours later, on a run nobody is watching. KAR-13.1. */
   'HUMAN_DEFAULT_UNKNOWN_OPTION',
+  /**
+   * §3.2 — a node of a type this daemon composes no performer for. KAR-23.9.
+   *
+   * On 2026-08-24 a validated plan was admitted with seven of them; each was
+   * started, each failed `internal`/`permanent` the moment it ran, and the rest
+   * of the graph followed as `dependency.failed`. The check is cheap and the
+   * alternative is fifteen failures at node 27.
+   */
+  'NODE_TYPE_UNPERFORMABLE',
+  /** §3.2 — a `tool` node whose `tool.kind` no runner in this daemon can
+   * perform. Its own code rather than a widening of the one above, because the
+   * repair is different: the *node* is fine and its work has to be expressed
+   * another way. KAR-23.9. */
+  'TOOL_KIND_UNPERFORMABLE',
 ] as const;
 
 export type PlanDiagnosticCode = (typeof PLAN_DIAGNOSTIC_CODES)[number];

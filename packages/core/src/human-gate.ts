@@ -500,3 +500,21 @@ function injectedTextOf(state: RunState, node: NodeId): string | null {
 
 /** Whether a plan node is the `human` kind, narrowed. */
 export const isHumanNode = (node: PlanNode): node is HumanNode => node.type === 'human';
+
+/**
+ * KAR-23.9 — the node types the **scheduler** answers rather than the executor
+ * performing.
+ *
+ * One member, and it is load-bearing rather than a curiosity. `decide()` admits
+ * a `human` node by `SuspendNode` and never by `StartNode` (`admitHumanGates`
+ * in ./decide.ts), so no daemon composes a performer for one and none ever
+ * should. Plan validation refuses a node type nothing can perform; without this
+ * list it would refuse every plan carrying a `human` node, which is precisely
+ * the feature KAR-13.1 exists to provide.
+ *
+ * `./scheduler-handled.test.ts` pins the list to `decide()`'s own behaviour,
+ * node type by node type, rather than to anyone's memory of it.
+ */
+export const SCHEDULER_HANDLED_NODE_TYPES = ['human'] as const;
+
+export type SchedulerHandledNodeType = (typeof SCHEDULER_HANDLED_NODE_TYPES)[number];

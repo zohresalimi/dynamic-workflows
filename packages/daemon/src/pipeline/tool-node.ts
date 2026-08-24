@@ -67,6 +67,15 @@
  *   is a `human` node, which the planner must author). A tool node's binary
  *   allowlist is enforced by the sandbox's filesystem and network rows, not by
  *   the verb list.
+ * - **The `scrubbed-env` arm of the deny list is inert here**, and it is passed
+ *   `[]` rather than left to look like it is doing something. That arm reports
+ *   a command that names a variable KAR-08.4 removed, so it can say so instead
+ *   of failing confusingly in the child — but the environment is built *after*
+ *   the refusal point (it needs a per-run `TMPDIR`, and creating one for a node
+ *   that is about to be refused would leak a directory per refusal). A tool
+ *   node declares no environment variables today, so the list would be the
+ *   same for every node in a run; when one does, the honest fix is to hoist
+ *   `buildChildEnv` above the check, not to reconstruct the scrubbed set here.
  *
  * ## Everything refusable is decided before a worktree exists
  *

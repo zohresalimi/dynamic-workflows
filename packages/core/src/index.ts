@@ -593,6 +593,7 @@ export type {
   HumanResponseRequest,
   HumanResponseState,
   InjectedGuidance,
+  SchedulerHandledNodeType,
 } from './human-gate.ts';
 export {
   HUMAN_DECISION_SCHEMA_ID,
@@ -607,6 +608,7 @@ export {
   openHumanGate,
   openHumanGates,
   planHumanResponse,
+  SCHEDULER_HANDLED_NODE_TYPES,
 } from './human-gate.ts';
 // KAR-02.1 — identifier types and the stable-NodeId invariant.
 export type {

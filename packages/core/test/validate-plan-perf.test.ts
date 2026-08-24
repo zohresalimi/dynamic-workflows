@@ -47,7 +47,7 @@
  * Verifies: EPIC-11-S6 (fan-out scale), AC12
  */
 import { expect, it, describe as suite } from 'vitest';
-import { PlanGraphSchema } from '../src/plan-graph.ts';
+import { NODE_TYPES, PlanGraphSchema, TOOL_KINDS } from '../src/plan-graph.ts';
 import { TaskSpecSchema } from '../src/task-spec.ts';
 import { type PlanTimeCapability, validatePlan } from '../src/validate-plan.ts';
 
@@ -151,8 +151,15 @@ function fanOut(width: number): ReturnType<typeof PlanGraphSchema.parse> {
   });
 }
 
+/** "Assume everything is performable" — the performability walk is one pass
+ * over the node list, so it is part of the linear budget this file measures. */
+const ANYTHING_PERFORMABLE = { nodeTypes: [...NODE_TYPES], toolKinds: [...TOOL_KINDS] };
+
 const run = (plan: ReturnType<typeof PlanGraphSchema.parse>) =>
-  validatePlan(plan, SPEC, CAPS, { estimatePacketTokens: () => 0 });
+  validatePlan(plan, SPEC, CAPS, {
+    estimatePacketTokens: () => 0,
+    performable: ANYTHING_PERFORMABLE,
+  });
 
 const ITERATIONS = 50;
 

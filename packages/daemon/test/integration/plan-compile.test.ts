@@ -402,7 +402,9 @@ suite('EPIC-11-S1 — three inputs compile to PlanGraph v1', () => {
         }),
       });
 
-      expect(result.outcome).toBe('failed');
+      // Two attempts, both refused: §3.5's escalation, not a `failed` compile —
+      // the plan was well-formed and the *work* is what nothing can perform.
+      expect(result.outcome).toBe('needs-human');
       const failures = readRange(db, RUN, 0, 500).events.filter(
         (event) => event.kind === 'plan.validation_failed',
       );

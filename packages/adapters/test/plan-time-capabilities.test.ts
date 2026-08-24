@@ -14,14 +14,22 @@
  * Verifies: EPIC-11-S8, EPIC-11-S9 · KAR-11.2 AC5, AC6
  */
 import {
+  NODE_TYPES,
   type PlanGraph,
   PlanGraphSchema,
   type PlanTimeCapability,
   resumeByReplayNodes,
   type TaskSpec,
   TaskSpecSchema,
+  TOOL_KINDS,
   validatePlan,
 } from '@DeFlow/core';
+
+/** "Assume everything is performable": KAR-23.9's own check has its own suites
+ * in `@DeFlow/core` and `@DeFlow/daemon`, and this file is about the capability
+ * refusals. */
+const ANYTHING_PERFORMABLE = { nodeTypes: [...NODE_TYPES], toolKinds: [...TOOL_KINDS] };
+
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it, describe as suite } from 'vitest';
@@ -96,7 +104,10 @@ const SPEC: TaskSpec = TaskSpecSchema.parse({
 });
 
 const validate = (plan: PlanGraph, caps: readonly PlanTimeCapability[]) =>
-  validatePlan(plan, SPEC, caps, { estimatePacketTokens: () => 0 });
+  validatePlan(plan, SPEC, caps, {
+    estimatePacketTokens: () => 0,
+    performable: ANYTHING_PERFORMABLE,
+  });
 
 /**
  * The resume diagnostics only.
