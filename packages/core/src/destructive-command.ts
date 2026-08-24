@@ -36,6 +36,7 @@
  *
  * Verifies: EPIC-08-S14 · AC3, AC4, AC5
  */
+import { splitCommandLine } from './command-line.ts';
 import type { PermissionReason } from './permission.ts';
 import { binaryName, hostOf, isLoopback, pathDepth, pathIsInside, resolvePosix } from './scope.ts';
 
@@ -232,4 +233,45 @@ export function destructiveCommand(
 
   const variable = scrubbedVariable([command, ...args], context.scrubbedEnv);
   return variable === null ? null : { code: 'scrubbed-env', detail: variable };
+}
+
+/**
+ * KAR-23.9 — the same layer, applied to a whole *line* that will be handed to
+ * a shell.
+ *
+ * A `tool` node's `run` is one string DeFlow gives to `/bin/sh -c`, so there is
+ * no `(command, args)` pair to judge until somebody decides how to read it.
+ * This function decides once, in two passes, and **only ever adds refusals**:
+ *
+ *  1. The documented reading (the module note above): a command that needs a
+ *     shell is judged as `sh`. That is what actually runs, so it is judged.
+ *  2. A conservative token scan. Every word of the line that names a binary on
+ *     `DESTRUCTIVE_COMMANDS` is judged with the words that follow it, so
+ *     `git add -A && terraform apply` is refused even though the *command*
+ *     being spawned is `sh`.
+ *
+ * **The second pass is not a decision procedure, and must never be mistaken
+ * for one.** §10.4 says static analysis of shell strings is undecidable in
+ * those words: `$X`, an alias, a here-doc and a base64 pipe all walk straight
+ * past it. It buys defence in depth and nothing else. What actually confines a
+ * plan script is the sandbox the caller wraps it in, never this parse — and a
+ * caller that read this as "the line was checked, so the shell is safe" would
+ * have inverted the whole argument.
+ */
+export function destructiveShellLine(
+  line: string,
+  context: CommandContext,
+  shell = '/bin/sh',
+): DestructiveReason | null {
+  const asShell = destructiveCommand(shell, ['-c', line], context);
+  if (asShell !== null) return asShell;
+
+  const words = splitCommandLine(line);
+  const named = new Set(DESTRUCTIVE_COMMANDS.map((entry) => entry.binary));
+  for (const [at, word] of words.entries()) {
+    if (!named.has(binaryName(word))) continue;
+    const verdict = destructiveCommand(word, words.slice(at + 1), context);
+    if (verdict !== null) return verdict;
+  }
+  return null;
 }

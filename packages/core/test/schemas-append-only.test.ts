@@ -62,6 +62,11 @@ const SHIPPED: Record<string, string> = {
   // attached to it. `edit` is the one effect that returns the node's own
   // declared contract instead of this one.
   'DeFlow.humandecision.v1': '83c3b5a064160f3daca5b8abf2ad25fa7d7e5d8c7f359a6a66d044927d3f2565',
+  // Shipped 2026-08-24, KAR-23.9 — what a `tool` node of kind `script`
+  // produced. Handles to the two streams, never the streams: the output lives
+  // in the data plane, and the fix for a silent tool node must not become a fat
+  // event payload.
+  'DeFlow.toolresult.v1': 'fd0f1361832b5d6d4c735d9ca88cf16edfb8f3fae25b6ae40defd205aa4e230e',
 };
 
 suite('the committed schemas are append-only (AC6)', () => {

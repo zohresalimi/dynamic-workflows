@@ -164,6 +164,9 @@ export { shellEffect } from './effects/shell-effect.ts';
 // sequence numbers would be told its events were committed when they were not.
 export type { LedgerSinkOptions } from './exec/ledger-sink.ts';
 export { sqliteLedgerSink } from './exec/ledger-sink.ts';
+// KAR-23.9 — the `tool` performer, and the set plan validation refuses against.
+export type { PerformableNodeType, PerformableToolKind } from './exec/performable.ts';
+export { PERFORMABLE_NODE_TYPES, PERFORMABLE_TOOL_KINDS } from './exec/performable.ts';
 // The orchestrator loop: reduce → decide → perform → append, with what a node
 // *does* injected as a `NodePerformer`.
 export type {
@@ -545,6 +548,7 @@ export type {
   RunExecutionResolver,
 } from './pipeline/run-execution.ts';
 export { createRunExecution } from './pipeline/run-execution.ts';
+export { TOOL_NODE_TIMEOUT_MS, toolNodePerformer } from './pipeline/tool-node.ts';
 // KAR-11.2 — plan validation's one entry point on this side of the boundary:
 // git's verdict on every node id, and the gate a patched plan commits through.
 export type {

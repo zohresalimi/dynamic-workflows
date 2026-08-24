@@ -35,6 +35,7 @@ const EXPECTED_IDS = [
   'DeFlow.reconsurvey.v1',
   'DeFlow.taskspecdraft.v1',
   'DeFlow.taskspec.v1',
+  'DeFlow.toolresult.v1',
   'DeFlow.verdict.v1',
   'DeFlow.verdict.v2',
   'DeFlow.verdict.v3',

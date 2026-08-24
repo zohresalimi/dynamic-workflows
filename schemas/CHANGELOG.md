@@ -62,6 +62,27 @@ file is where you record it.
 
 ## Entries
 
+### DeFlow.toolresult.v1
+
+**KAR-23.9.** A new document, not a version bump: nothing shipped under this id before, because
+until this story no daemon could perform a `tool` node at all. It is what a script node's
+`node.completed` files its output under, exactly as `DeFlow.verdict.v4` is what a gate node's does —
+so `outputSchemaId` names a document that really exists rather than a shape nobody can resolve.
+
+| Field                | Why it is here                                                                                     |
+| -------------------- | -------------------------------------------------------------------------------------------------- |
+| `kind: 'script'`     | A discriminator, so `mcp` and `http` arrive as members rather than as optional fields on this one.  |
+| `exitCode` nullable  | `null` is *killed before it could exit* — a timeout, a cancel — which is a different fact from `0`. |
+| `signal` nullable    | Which signal ended it, when one did.                                                               |
+| `durationMs`         | Measured on the injected `Clock` (NF9), never `Date.now()`.                                        |
+| `timedOut`           | Whether the deadline is what ended it, stated rather than inferred from a null exit code.          |
+| `stdout` / `stderr`  | **Handles**, nullable. The output lives in the data plane — `io_chunk` while it happens, a content-addressed blob afterwards — so the fix for a silent tool node does not become a fat `node.completed` payload. `null` means the stream produced nothing, which is not the same as a handle to an empty blob. |
+
+**Why not the node's own `returns.schemaId`.** That was the smaller diff and it would have put a
+quiet lie in the ledger: a script produces an exit code and two streams, not the planner's contract,
+and nothing today validates the claim. The ledger would record that the node returned a document it
+never produced.
+
 ### DeFlow.finding.v2
 
 **KAR-12.3.** A finding's line is anchored to the blob it was read from:

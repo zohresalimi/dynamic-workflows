@@ -1,0 +1,10 @@
+{
+  "kind": "script",
+  "exitCode": 0,
+  "signal": null,
+  "durationMs": 812,
+  "timedOut": false,
+  "stdout": null,
+  "stderr": null,
+  "stdoutText": "the whole output, inline — which is the one thing this document must never carry"
+}

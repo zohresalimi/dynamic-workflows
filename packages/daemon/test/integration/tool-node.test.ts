@@ -29,8 +29,25 @@
  */
 
 import { shimCapabilityRow } from '@DeFlow/adapters';
-import type { Db, Handle, NodeId, RunId } from '@DeFlow/core';
-import { HandleSchema, NodeIdSchema, seededRandom } from '@DeFlow/core';
+import type {
+  Db,
+  EventSeq,
+  Handle,
+  NodeFailure,
+  NodeId,
+  PermissionLevel,
+  RunId,
+  StartNode,
+} from '@DeFlow/core';
+import {
+  HandleSchema,
+  initialRunState,
+  NodeIdSchema,
+  parsePlanGraph,
+  RunIdSchema,
+  seededRandom,
+  toNodeFailure,
+} from '@DeFlow/core';
 import {
   blobHandle,
   bumpEpoch,
@@ -53,6 +70,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, describe as suite } from 'vitest';
 import { systemClock } from '../../src/clock.ts';
 import { createRunDriver, type RunDriver } from '../../src/drive.ts';
+import { createEffectRunner } from '../../src/effects/durable.ts';
 import type { FramingAgent } from '../../src/framing/interview.ts';
 import { nodeBranch, runRef } from '../../src/git/branch-name.ts';
 import { Git } from '../../src/git/git.ts';
@@ -65,14 +83,15 @@ import {
   type RunChainContext,
   type RunChainResolver,
 } from '../../src/pipeline/run-chain.ts';
+import { toolNodePerformer } from '../../src/pipeline/tool-node.ts';
 import type { PlannerAgent } from '../../src/plan/compile.ts';
 import { resetConnectorServerCache } from '../../src/providers/connector-servers.ts';
 import type { ReconAgent } from '../../src/recon/recon.ts';
 import { loadSchemaDirectory } from '../../src/schema-store.ts';
 import { approveSpec } from '../../src/spec/gate.ts';
 import { o200kTokenizer } from '../../src/tokens/tokenizer.ts';
-import { installFakeVendorCli } from './support/fake-vendor.ts';
 import { installStubSandboxRuntime, type SrtInvocation } from './support/fake-srt.ts';
+import { installFakeVendorCli } from './support/fake-vendor.ts';
 
 const SCHEMAS_DIR = fileURLToPath(new URL('../../../../schemas/', import.meta.url));
 
@@ -158,7 +177,7 @@ const planOf = (node: Record<string, unknown>) => ({
 
 /** Builtins only: the child's `PATH` is DeFlow's replacement, and this file
  * puts only the fixture's own root and the system's on it. */
-const WRITES_A_FILE = "printf 'hello' > out.txt && echo \"ran-in $(pwd)\"";
+const WRITES_A_FILE = 'printf \'hello\' > out.txt && echo "ran-in $(pwd)"';
 
 // ── the chain's three agents, scripted ───────────────────────────────────────
 
@@ -276,7 +295,12 @@ async function scene(tmp: string, node: Record<string, unknown>): Promise<Scene>
   const binDir = join(tmp, 'bin');
   const srtLog = join(tmp, 'srt.log');
 
-  const binaryPath = await installFakeVendorCli({ binDir, name: 'claude', scenario: '', nowMs: T0 });
+  const binaryPath = await installFakeVendorCli({
+    binDir,
+    name: 'claude',
+    scenario: '',
+    nowMs: T0,
+  });
   await installStubSandboxRuntime({ binDir, log: srtLog });
   // The Linux prerequisites, so this spec asserts the tool performer rather
   // than the platform it happens to be running on. `checkSandboxDependencies`
@@ -413,8 +437,10 @@ suite('KAR-23.9 — a script tool node runs', () => {
       expect(transcript).toContain('ran-in');
 
       const completed = eventsOf(s.db, s.runId, 'node.completed').find((e) => e.nodeId === NODE);
-      expect(completed, `the tool node never completed: ${kinds(s.db, s.runId).join(' → ')}`)
-        .toBeDefined();
+      expect(
+        completed,
+        `the tool node never completed: ${kinds(s.db, s.runId).join(' → ')}`,
+      ).toBeDefined();
       expect(
         (completed?.payload as { result: { output: { exitCode: number } } }).result.output.exitCode,
       ).toBe(0);
@@ -431,7 +457,7 @@ suite('KAR-23.9 — a script tool node runs', () => {
       // One journalled `shell` effect at ordinal 0 — the position `closeEffect`
       // looks at, so the executor and the performer agree by construction.
       expect(kinds(s.db, s.runId)).toContain('effect.started');
-      const ikey = `${s.runId}:${NODE}:0:0`;
+      const ikey = `${s.runId}/${NODE}/0/0`;
       expect(readEffect(s.db, ikey)?.kind).toBe('shell');
       expect(readEffect(s.db, ikey)?.state).toBe('done');
 
@@ -462,8 +488,12 @@ suite('KAR-23.9 — a script tool node runs', () => {
       expect(invocation.settings.filesystem.allowWrite[0]).toContain(NODE);
       expect(invocation.settings.filesystem.denyRead).toContain('~/.ssh/**');
       expect(invocation.settings.network.allowedDomains).toEqual([]);
-      // The child's cwd is inside the worktree it may write.
-      expect(invocation.cwd).toBe(invocation.settings.filesystem.allowWrite[0]);
+      // The child's cwd is the worktree it may write — compared by suffix
+      // because macOS resolves `/var` to `/private/var` under the child's feet
+      // and `process.cwd()` reports the resolved form.
+      expect(invocation.cwd.endsWith(invocation.settings.filesystem.allowWrite[0] ?? 'x')).toBe(
+        true,
+      );
       // DeFlowd's own environment never reaches it: `buildChildEnv`'s allowlist
       // is what the child sees, and this daemon's `PATH` is not the operator's.
       expect(invocation.envNames).not.toContain('DeFlow_FAKE_SCENARIO');
@@ -478,7 +508,10 @@ suite('KAR-23.9 — a script tool node runs', () => {
 
 suite('KAR-23.9 — a script that fails', () => {
   it('fails the node with its exit code, and a mutating one is never retried', async ({ tmp }) => {
-    const s = await scene(tmp, toolNode({ kind: 'script', run: 'echo nope >&2; exit 3', cwd: '.' }));
+    const s = await scene(
+      tmp,
+      toolNode({ kind: 'script', run: 'echo nope >&2; exit 3', cwd: '.' }),
+    );
     try {
       await driveToPlan(s);
 
@@ -505,3 +538,149 @@ suite('KAR-23.9 — a script that fails', () => {
   });
 });
 
+// ── (c) the run-time backstop, driven at the performer ───────────────────────
+
+/**
+ * The performer, entered directly with a hand-written plan.
+ *
+ * Deliberately not through the chain: from KAR-23.9 on, an `http` tool node and
+ * a `full` one are refused at **plan time** (`TOOL_KIND_UNPERFORMABLE`), so a
+ * planner can no longer produce one to drive. The run-time refusal still has to
+ * exist and still has to be tested, because `byNodeType` routes on node *type*:
+ * a plan compiled by an older build, a patch path, or a hand-written document
+ * would otherwise fall into the script spawn path. Entering the performer is
+ * the only way to ask that question at all.
+ */
+async function refusal(
+  tmp: string,
+  node: Record<string, unknown>,
+): Promise<{ readonly failure: NodeFailure; readonly created: number }> {
+  const repoDir = join(tmp, 'repo');
+  await makeRepo({ dir: repoDir, files: { 'README.md': '# fixture\n' } });
+  const dataDir = join(tmp, 'data');
+  await mkdir(dataDir, { recursive: true });
+  const binDir = join(tmp, 'bin');
+  await installStubSandboxRuntime({ binDir, log: join(tmp, 'srt.log') });
+
+  const db = openLedger(dataDir);
+  try {
+    const epoch = bumpEpoch(db);
+    const runId = RunIdSchema.parse('run_20260824T110147Z_f21769');
+    const parsed = parsePlanGraph({ ...planOf(node), runId });
+    if (!parsed.success) throw new Error(JSON.stringify(parsed.issues, null, 2));
+
+    const perform = toolNodePerformer(
+      {
+        dataDir,
+        clock: systemClock,
+        providerRoots: [binDir, '/bin', '/usr/bin'],
+        daemonEnv: process.env,
+      },
+      repoDir,
+    );
+
+    const command: StartNode = {
+      kind: 'StartNode',
+      runId,
+      node: NODE,
+      attempt: 0,
+      nodeType: 'tool',
+      title: 'Cut the feature branch',
+      provider: null,
+      model: null,
+      permission: (node.permission ?? 'worktree') as PermissionLevel,
+      pathScopes: { write: ['**'] },
+      worktree: null,
+      retry: { maxAttempts: 3, backoff: { base: 2000, cap: 300_000, jitter: 'full' } },
+    };
+
+    let thrown: unknown = null;
+    try {
+      await perform(command, {
+        db,
+        runId,
+        clock: systemClock,
+        epoch,
+        daemonStartedAt: systemClock.now(),
+        effects: createEffectRunner({
+          db,
+          clock: systemClock,
+          daemonStartedAt: systemClock.now(),
+          epoch,
+        }),
+        state: { ...initialRunState(), runId, plan: parsed.data },
+      });
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown, 'the performer accepted a node it cannot perform').not.toBeNull();
+
+    return {
+      failure: toNodeFailure(thrown, {
+        occurredAtEvent: 1 as EventSeq,
+        attempt: 0,
+        captureEvidence: () => `artifact://${'0'.repeat(64)}` as Handle,
+      }),
+      created: eventsOf(db, runId, 'workspace.worktree_created').length,
+    };
+  } finally {
+    db.close();
+  }
+}
+
+suite('KAR-23.9 — the run-time backstop refuses before a worktree exists', () => {
+  it('refuses an http tool node as a missing capability, and provisions nothing', async ({
+    tmp,
+  }) => {
+    const { failure, created } = await refusal(
+      tmp,
+      toolNode({ kind: 'http', method: 'POST', url: 'https://example.com/hook' }),
+    );
+    expect(failure.reason).toBe('adapter.capability-missing');
+    expect(failure.class).toBe('permanent');
+    expect(failure.message).toContain('http');
+    expect(created).toBe(0);
+  });
+
+  it('refuses an mcp tool node the same way', async ({ tmp }) => {
+    const { failure, created } = await refusal(
+      tmp,
+      toolNode({ kind: 'mcp', server: 'linear', tool: 'create_issue', args: {} }),
+    );
+    expect(failure.reason).toBe('adapter.capability-missing');
+    expect(created).toBe(0);
+  });
+
+  it('refuses a `full` tool node outright — nothing authorises it', async ({ tmp }) => {
+    // `fullPermissionIssues` has no production caller, so F5.4's per-run opt-in
+    // authorises nothing today: a `full` script would be arbitrary shell as the
+    // operator on the strength of a sentence a planner wrote.
+    const { failure, created } = await refusal(
+      tmp,
+      toolNode({ kind: 'script', run: WRITES_A_FILE, cwd: '.' }, { permission: 'full' }),
+    );
+    expect(failure.reason).toBe('safety.permission-unschedulable');
+    expect(failure.class).toBe('permanent');
+    expect(failure.message).toContain('full is not a sandbox');
+    expect(created).toBe(0);
+  });
+
+  it('refuses a cwd that escapes the worktree', async ({ tmp }) => {
+    const { failure } = await refusal(
+      tmp,
+      toolNode({ kind: 'script', run: 'echo hi', cwd: '../../elsewhere' }),
+    );
+    expect(failure.reason).toBe('safety.pathscope-violation');
+    expect(failure.class).toBe('permanent');
+  });
+
+  it('refuses a run line the F5.6 deny list turns away', async ({ tmp }) => {
+    const { failure, created } = await refusal(
+      tmp,
+      toolNode({ kind: 'script', run: 'terraform apply -auto-approve', cwd: '.' }),
+    );
+    expect(failure.reason).toBe('safety.execution-boundary');
+    expect(failure.class).toBe('permanent');
+    expect(created).toBe(0);
+  });
+});

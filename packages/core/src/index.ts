@@ -152,6 +152,7 @@ export type {
   WakeReason,
 } from './command.ts';
 export { COMMAND_ORDER, NO_DEADLINE_WAKE_AT, WAKE_REASONS } from './command.ts';
+export { splitCommandLine } from './command-line.ts';
 // KAR-09.6 — compaction with a fidelity discriminator: the union that makes
 // "a vendor.session event is never exact" a compile error, the F10.5
 // projection that labels an inferred figure, and the auto-compact arithmetic.
@@ -331,7 +332,11 @@ export {
   pinReinjectTurnsFor,
 } from './deflow-config.ts';
 export type { CommandContext, DestructiveReason } from './destructive-command.ts';
-export { DESTRUCTIVE_COMMANDS, destructiveCommand } from './destructive-command.ts';
+export {
+  DESTRUCTIVE_COMMANDS,
+  destructiveCommand,
+  destructiveShellLine,
+} from './destructive-command.ts';
 // KAR-06.3 — what the effect journal remembers about what was asked for, so a
 // plan edit landing under a journalled effect cannot return the memoised
 // result of the operation it replaced.
@@ -940,6 +945,7 @@ export type {
   ReadDecl,
   RetryPolicy,
   SubgraphNode,
+  ToolKind,
   ToolNode,
   WriteDecl,
 } from './plan-graph.ts';
@@ -971,6 +977,7 @@ export {
   ReadDeclSchema,
   RetryPolicySchema,
   SubgraphNodeSchema,
+  TOOL_KINDS,
   ToolNodeSchema,
   WriteDeclSchema,
 } from './plan-graph.ts';
@@ -1344,6 +1351,9 @@ export {
 // same style as `Clock` and `Db`; core owns no BPE table.
 export type { Tokenizer } from './tokenizer.ts';
 export { contextFillPercent } from './tokenizer.ts';
+// KAR-23.9 — what a script tool node's `node.completed` files its output under.
+export type { ToolResult } from './tool-result.ts';
+export { TOOL_RESULT_SCHEMA_ID, ToolResultSchema } from './tool-result.ts';
 export { PlanCycleError, topoSort } from './topo-sort.ts';
 // KAR-02.7 — the read-time upcaster chain.
 export type {

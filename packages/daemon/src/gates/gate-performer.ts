@@ -120,8 +120,19 @@ export function byNodeType(
   return (command: StartNode, ctx: ExecContext): Promise<void> => {
     const performer = performers[command.nodeType];
     if (performer === undefined) {
+      // KAR-23.9 — the message names what this daemon *can* run, because on
+      // 2026-08-24 the operator read the old sentence and had no way to tell
+      // whether the node type was unsupported, misspelled or unwired. A plan
+      // carrying such a node should never reach here at all now: plan
+      // validation refuses it with `NODE_TYPE_UNPERFORMABLE`, and this is the
+      // backstop for a document that predates the check.
+      const composed = Object.keys(performers).toSorted().join(', ');
       return Promise.reject(
-        new Error(`nothing in this daemon knows how to perform a ${command.nodeType} node`),
+        new Error(
+          `nothing in this daemon knows how to perform a ${command.nodeType} node; it composes ` +
+            `performers for ${composed || '(none)'}, and a human node is answered by a person ` +
+            'rather than performed',
+        ),
       );
     }
     return performer(command, ctx);

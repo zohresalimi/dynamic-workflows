@@ -215,8 +215,30 @@ suite('EPIC-08-S25 — never nest, and never leave a CLI bare (AC7)', () => {
     expect(gemini.argv[gemini.argv.indexOf('--settings') + 1]).toMatch(/\.json$/);
   });
 
-  it('the wrapper must be installed, and its absence is a refusal not a bypass', () => {
-    expect(() => plan('gemini', 'worktree')).toThrow(/srt/);
+  it('falls back to the wrapper DeFlow pinned when the operator has none (KAR-23.9)', () => {
+    // Before KAR-23.9 this asserted a throw, and the throw was the bug: a
+    // correctly installed DeFlow on a machine with no *global* `srt` refused
+    // every non-vendor node, because the only place looked at was the
+    // operator's `PATH`. `resolveSandboxRuntime` now tries the pinned
+    // dependency second — never the worktree, never a path the plan names — so
+    // an empty `roots` list still produces a wrapped plan.
+    const gemini = plan('gemini', 'worktree', sandbox({ roots: NO_ROOTS, platform: 'darwin' }));
+
+    expect(gemini.strategy).toBe('sandbox-runtime');
+    expect(gemini.command).toContain('sandbox-runtime');
+    expect(gemini.argv[0]).toBe('--settings');
+    // The refusal that still has to exist: nothing here comes from the node's
+    // own worktree.
+    expect(gemini.command.startsWith(WORKTREE)).toBe(false);
+  });
+
+  it('and a level whose Linux prerequisites are missing is still a refusal', () => {
+    // The wrapper being resolvable is not the same claim as the level being
+    // enforceable: bwrap and socat are checked first, and their absence is a
+    // refusal before the wrapper is looked for at all.
+    expect(() =>
+      plan('gemini', 'worktree', sandbox({ roots: NO_ROOTS, platform: 'linux' })),
+    ).toThrow(/bubblewrap/);
   });
 });
 
