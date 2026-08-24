@@ -83,7 +83,11 @@ export {
   supportsSteering,
   supportsTerminal,
 } from './capabilities.ts';
-export { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
+export {
+  CLIENT_CAPABILITIES,
+  CLIENT_INFO,
+  requiredClientMethods,
+} from './client-capabilities.ts';
 // KAR-09.6 — the compaction lever as one vendor's environment, and the shape
 // check that catches the day a decoded constant stops being true.
 export {
@@ -137,8 +141,10 @@ export {
   agentExited,
   agentTimedOut,
   argvRejected,
+  clientMethodUnimplemented,
   frameTooLarge,
   handshakeMismatch,
+  INTERNAL_ERROR_CODE,
   InvalidRecordingKey,
   isMethodNotFound,
   METHOD_NOT_FOUND_CODE,

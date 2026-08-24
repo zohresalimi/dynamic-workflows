@@ -62,14 +62,16 @@ import * as acp from '@agentclientprotocol/sdk';
 import { admit } from './admission.ts';
 import { budgetConsumed } from './budget-consumed.ts';
 import { CAPABILITY_PATHS, supportsSteering } from './capabilities.ts';
-import { CLIENT_CAPABILITIES, CLIENT_INFO } from './client-capabilities.ts';
+import { CLIENT_CAPABILITIES, CLIENT_INFO, requiredClientMethods } from './client-capabilities.ts';
 import {
   ACP_PROTOCOL_VERSION,
   acpRateLimit,
   advertisedButUnimplemented,
   agentExited,
   agentTimedOut,
+  clientMethodUnimplemented,
   handshakeMismatch,
+  INTERNAL_ERROR_CODE,
   isMethodNotFound,
   NotImplementedOnWin32,
   offendingFrameHead,
@@ -637,12 +639,49 @@ export async function runAcpNode(
       );
     }
 
+    // KAR-23.10 — everything DeFlow advertised at `initialize` and did not
+    // wire. The agent gets a real error for its request *and* the turn ends,
+    // named: a client that answers `-32601` to its own advertised method leaves
+    // the agent to infer it is read-only, and an agent that infers that spends
+    // the whole node saying so. That is `run_20260824T143505Z_3a7365` — four
+    // implementation nodes, twenty-two minutes, zero files, all green.
+    //
+    // Deliberately lazy rather than a pre-spawn refusal like
+    // `scopeAuditRefusal` above: `runAcpNode` has legitimate callers that
+    // supply no handlers and never need them — the conformance assertions and
+    // the capability probe — and a pre-spawn refusal would break them. This
+    // costs them nothing and still turns the production case into a five-second
+    // typed failure.
+    let refuseUnimplemented: (failure: NodeFailureError) => void = () => undefined;
+    const unimplemented = new Promise<never>((_resolve, reject) => {
+      refuseUnimplemented = reject;
+    });
+    // Nothing may await this promise except the race below, and the race may
+    // settle on another arm first: a rejection with no handler is an unhandled
+    // rejection, which on some Node configurations takes the daemon down.
+    unimplemented.catch(() => undefined);
+    for (const method of requiredClientMethods(CLIENT_CAPABILITIES)) {
+      if (Object.hasOwn(ports.handlers ?? {}, method)) continue;
+      app = app.onRequest<unknown, unknown>(
+        method,
+        (params: unknown) => params,
+        () => {
+          refuseUnimplemented(clientMethodUnimplemented(method));
+          throw new acp.RequestError(
+            INTERNAL_ERROR_CODE,
+            `DeFlow advertised ${method} and did not implement it`,
+          );
+        },
+      );
+    }
+
     // Raced with the connection, not merely with the pull loop: the frame
     // guard can trip on the `initialize` response, before a session exists and
     // before anything is awaiting `nextUpdate()`. Without this the turn would
     // sit on a handshake that can no longer be answered.
     await Promise.race([
       transport.failed,
+      unimplemented,
       app.connectWith(transport.stream, async (ctx) => {
         const initialized = await ctx.request('initialize', {
           protocolVersion: ACP_PROTOCOL_VERSION,

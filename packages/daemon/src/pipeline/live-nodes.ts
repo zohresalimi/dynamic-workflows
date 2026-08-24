@@ -50,6 +50,18 @@
  * one allowlist (KAR-08.4), and one capability answer read from the probed row
  * and nowhere else (KAR-05.2).
  *
+ * **The ACP arm carries the node's mediation fronts; the shim arm carries
+ * none, and that is the design (KAR-23.10).** `runAcpNode` has always taken
+ * `handlers` as data and no daemon call site supplied it, so on 2026-08-24
+ * `session/request_permission` came back `-32601 Method not found`, every
+ * non-read tool call failed identically, and four implementation nodes spent
+ * twenty-two minutes concluding — correctly, from what they were told — that
+ * this client was read-only. `./node-mediation.ts` composes the three fronts
+ * for one attempt and is called here. `runShimNode` needs no counterpart
+ * because it has no client: there is no JSON-RPC client side to answer, its
+ * containment is the OS sandbox, and its minted capability row refuses
+ * everything above `read` before a process exists.
+ *
  * What this file deliberately does **not** do yet is merge a node's branch back
  * — that is EPIC-07's integration loop, and inventing a second merge here would
  * give a run two answers about how work arrives on the integration branch.
@@ -122,6 +134,7 @@ import { createScopeAudit } from '../services/scope-diff.ts';
 import { o200kTokenizer } from '../tokens/tokenizer.ts';
 import type { Chosen } from './live-chain.ts';
 import { ASSUMED_CONTEXT_FLOOR, chooseProvider, PROVIDER_DEFAULT_MODEL } from './live-chain.ts';
+import { nodeClientHandlers } from './node-mediation.ts';
 import type { RunExecution, RunExecutionContext } from './run-execution.ts';
 import { createRunExecution } from './run-execution.ts';
 import { toolNodePerformer } from './tool-node.ts';
@@ -622,6 +635,34 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
                   processes,
                   scopeAudit,
                   captureEvidence,
+                  // KAR-23.10 — the node's three mediation fronts. `runAcpNode`
+                  // has always taken these as data and no daemon call site
+                  // supplied them, so `session/request_permission` came back
+                  // `-32601` and every agent concluded DeFlow was a read-only
+                  // client. See `./node-mediation.ts` for why the shim arm
+                  // above needs no counterpart.
+                  //
+                  // `provisioned.path` and not `cwd`: it is the same root
+                  // `runAcpNode` is given as `worktree` and hands to
+                  // `session/new` as `cwd`, so the containment check, the
+                  // scope check and the agent all resolve one path against one
+                  // directory.
+                  handlers: nodeClientHandlers({
+                    db: ctx.db,
+                    runId: ctx.runId,
+                    epoch: ctx.epoch,
+                    clock: ctx.clock,
+                    nodeId: command.node,
+                    attempt: command.attempt,
+                    level: command.permission,
+                    worktree: provisioned.path,
+                    pathScopes: [...command.pathScopes.write],
+                    scrubbedEnv: scrubbed,
+                    childEnv: env,
+                    // An agent node always declares one, so an approval queue
+                    // row reads without opening the plan (KAR-13.4 AC2).
+                    ...(setting.node.type === 'agent' ? { brief: setting.node.brief } : {}),
+                  }),
                 },
               );
             })();

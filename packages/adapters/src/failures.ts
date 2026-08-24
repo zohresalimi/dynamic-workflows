@@ -406,6 +406,17 @@ export class InvalidRecordingKey extends NodeFailureError {
 export const METHOD_NOT_FOUND_CODE = -32601;
 
 /**
+ * JSON-RPC's "Internal error", and — KAR-23.10 — deliberately **not**
+ * `METHOD_NOT_FOUND_CODE` for a method DeFlow advertised.
+ *
+ * `-32601` means *"this client cannot do that"*, which an agent is entitled to
+ * believe and to route around. A method the handshake claimed is a different
+ * fact: the client can do it and this build did not wire it, so the honest code
+ * is the one that says the fault is on this side of the wire.
+ */
+export const INTERNAL_ERROR_CODE = -32603;
+
+/**
  * Every JSON-RPC error code ACP has already given a meaning to, read off the
  * SDK's own constructors (`@agentclientprotocol/sdk` 1.3.0) rather than
  * written down as literals.
@@ -567,6 +578,31 @@ export function advertisedButUnimplemented(
       class: 'permanent',
       detail: { capability, method, path },
     },
+  );
+}
+
+/**
+ * KAR-23.10 — the mirror of `advertisedButUnimplemented`, pointing the other
+ * way: **DeFlow** advertised a client capability and did not wire the method
+ * behind it.
+ *
+ * `internal`, because this is DeFlow's bug and no capability row, no adapter
+ * and no vendor is at fault — calling it `adapter.protocol-error` would put the
+ * blame on an agent that did exactly what the handshake invited. `permanent`,
+ * because no retry against the same build can help and the node's attempt
+ * budget must not be spent proving that.
+ *
+ * The failure exists at all because the alternative is silence. A `-32601` is
+ * what a client that genuinely cannot do a thing answers, so an agent that gets
+ * one degrades to read-only and keeps working — which is how four nodes ran
+ * twenty-two minutes and wrote nothing, and completed.
+ */
+export function clientMethodUnimplemented(method: string): NodeFailureError {
+  return new NodeFailureError(
+    `DeFlow advertised ${method} at initialize and did not implement it, so the agent was told ` +
+      'it could do something this client cannot answer; the node is failed here rather than left ' +
+      'to infer from a Method not found that it is read-only',
+    { reason: 'internal', class: 'permanent', detail: { method } },
   );
 }
 
