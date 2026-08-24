@@ -62,6 +62,59 @@ file is where you record it.
 
 ## Entries
 
+### node.failed v2, effect.failed v2
+
+**KAR-23.11.** `failure.reason` widens by one member, `contract.no-work-product`: a node that
+declared a non-empty `pathScopes.write` and finished its turn having changed no file and made no
+commit in its own worktree. Both payloads embed `NodeFailureSchema`, so both move together — a reader
+that trusted `effect.failed` v1 to mean "the pre-KAR-23.11 reason set" would be reading a payload
+that can now carry more.
+
+| Change                          | Kind     | Why it is not lossy                                                                                                     |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `failure.reason` gains a member | widening | Every v1 payload is already a valid v2 one — both hops are the identity — and no v1 payload can have carried the reason. |
+
+Both hops are registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**What it is for.** On 2026-08-24, `run_20260824T143505Z_3a7365` took four implementation nodes to
+`node.completed` over twenty-two minutes. Every branch `DeFlow/run_20260824t143505z_3a7365__*` holds
+zero commits and an empty diff against main. The completion payloads carry `artifacts: []` beside an
+`output.text` saying, in the agent's own words, _"I am blocked before any code could land"_ and _"I
+wrote no files"_. Nothing in the ledger, the CLI or the UI noticed; the run looked healthy. The
+underlying cause is fixed elsewhere (MET-1009's unwired permission fronts), but DeFlow still could
+not tell a node that implemented a feature from a node that reported being unable to start.
+
+**The rule.** At the completion chokepoint (`packages/adapters/src/scope-audit.ts`), a node whose
+plan-declared `pathScopes.write` is non-empty must have left at least one changed, renamed or
+untracked path, **or** at least one commit on its branch since the commit it was provisioned from. If
+neither, the attempt is a `node.failed`, appended with `budget.consumed` in one transaction —
+twenty-two failed minutes are still spend.
+
+The commit count is not optional polish. DeFlow's model is that a node's work sits dirty and is
+salvage-committed at teardown, so `git status` is normally the whole answer; an agent that commits
+its own work would show a clean status, and failing *that* node would be the worst false positive
+available. It is also literally the measurement the incident was diagnosed with.
+
+**How a legitimately-empty node stays green.** It declares `pathScopes.write: []`, and
+`auditCompletionScope` already returns early for exactly that — a reviewer, a verification agent, a
+node that only returns a document is never even asked. The planner packet's `plan-rules` brief states
+that as a plan-authoring rule up front, which converts the one realistic false-positive class into
+something the planner is told before it costs a turn.
+
+**Why not `agent.refused`.** Zero schema work, and a lie:
+[§8](../docs/04-domain-model.md) defines it as _"stopReason indicated refusal"_, and these turns
+ended `end_turn`. `DeFlow.toolresult.v1` below is the precedent for choosing the bigger diff over a
+quiet lie in the ledger.
+
+**Why no `plangraph.v2`.** `NODE_FAILURE_REASONS` was embedded in two published document schemas
+through `RetryPolicySchema.onFailure[].when`, so widening it would have rewritten the bytes of
+`DeFlow.plangraph.v1.json` and `DeFlow.planpatch.v1.json`. Those are now pinned to a new frozen
+`PLAN_AUTHORABLE_FAILURE_REASONS` — the reasons that existed when v1 shipped, held to the taxonomy by
+`satisfies readonly NodeFailureReason[]` so a *deletion* is a compile error. Both emitted files stay
+byte-identical and `schemas-append-only.test.ts` needed no hash edited. A retry policy therefore
+cannot name `contract.no-work-product`, which is correct rather than a gap: it is DeFlow's own verdict
+on the node, and its class is `permanent` by construction.
+
 ### DeFlow.toolresult.v1
 
 **KAR-23.9.** A new document, not a version bump: nothing shipped under this id before, because

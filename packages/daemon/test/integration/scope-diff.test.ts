@@ -49,7 +49,12 @@ import {
   createScopeAudit,
   worktreePathPolicy,
 } from '../../src/index.ts';
-import { changedPaths, outOfScopePaths, scopeWarningOf } from '../../src/services/scope-diff.ts';
+import {
+  changedPaths,
+  commitsAheadOf,
+  outOfScopePaths,
+  scopeWarningOf,
+} from '../../src/services/scope-diff.ts';
 import { sqliteLedgerSink } from './support/ledger.ts';
 
 const NODE = NodeIdSchema.parse('implement');
@@ -137,6 +142,99 @@ suite('EPIC-08-S30 — a completion-time violation is recorded as a warning', ()
     const paths = await changedPaths(repo.dir, { env: GIT_ENV });
 
     expect(outOfScopePaths(repo.dir, ['src/**'], paths)).toEqual([]);
+  });
+});
+
+/**
+ * KAR-23.11 — the half of the diff that used to be computed and thrown away.
+ *
+ * `createScopeAudit` is what the running system wires, so what it *returns* is
+ * what the completion decision reads. A clean, commit-free worktree reporting
+ * `{ changed: [], commitsAhead: 0 }` is the exact measurement
+ * `run_20260824T143505Z_3a7365` was diagnosed with, and the commit count is the
+ * only thing standing between this check and failing every agent that commits
+ * its own work.
+ */
+suite('KAR-23.11 — createScopeAudit reports what the worktree actually holds', () => {
+  it('reports a clean, commit-free worktree as changed: [], commitsAhead: 0', async () => {
+    const repo = await makeRepo({ dir: join(dir, 'w1'), files: { 'src/a.ts': 'export {};\n' } });
+    const head = (await repo.git('rev-parse', 'HEAD')).trim();
+
+    const audit = createScopeAudit({ env: GIT_ENV });
+
+    expect(
+      await audit({
+        node: NODE,
+        attempt: 0,
+        worktree: repo.dir,
+        declared: ['src/**'],
+        baseOid: head,
+      }),
+    ).toEqual({ changed: [], commitsAhead: 0, warning: null });
+  });
+
+  it('reports the changed path of a node that wrote and did not commit', async () => {
+    const repo = await makeRepo({ dir: join(dir, 'w2'), files: { 'src/a.ts': 'export {};\n' } });
+    const head = (await repo.git('rev-parse', 'HEAD')).trim();
+    await writeFile(join(repo.dir, 'src', 'a.ts'), 'export const x = 1;\n');
+
+    const audit = createScopeAudit({ env: GIT_ENV });
+    const result = await audit({
+      node: NODE,
+      attempt: 0,
+      worktree: repo.dir,
+      declared: ['src/**'],
+      baseOid: head,
+    });
+
+    expect(result.changed).toEqual(['src/a.ts']);
+    expect(result.commitsAhead).toBe(0);
+    expect(result.warning).toBeNull();
+  });
+
+  it('counts the commit an agent made itself, over an otherwise clean worktree', async () => {
+    // The false positive this exists to prevent. DeFlow salvage-commits at
+    // teardown, so a node's work normally sits dirty — but an agent that
+    // commits its own work leaves `git status` empty, and failing *that* node
+    // would be the worst outcome available.
+    const repo = await makeRepo({ dir: join(dir, 'w3'), files: { 'src/a.ts': 'export {};\n' } });
+    const head = (await repo.git('rev-parse', 'HEAD')).trim();
+    await writeFile(join(repo.dir, 'src', 'a.ts'), 'export const x = 1;\n');
+    await repo.git('add', '-A');
+    await repo.git('commit', '-m', 'the agent committed its own work');
+
+    const audit = createScopeAudit({ env: GIT_ENV });
+    const result = await audit({
+      node: NODE,
+      attempt: 0,
+      worktree: repo.dir,
+      declared: ['src/**'],
+      baseOid: head,
+    });
+
+    expect(result.changed).toEqual([]);
+    expect(result.commitsAhead).toBe(1);
+  });
+
+  it('answers 0 rather than throwing when the base cannot be resolved', async () => {
+    // This runs immediately before a completion decision. An exception here
+    // would fail a node for the auditor's own inability to measure it, so an
+    // unknown base reads as "git could not tell us" — which is exactly what
+    // `git status` alone already reports.
+    const repo = await makeRepo({ dir: join(dir, 'w4'), files: { 'src/a.ts': 'export {};\n' } });
+
+    expect(await commitsAheadOf(repo.dir, 'f'.repeat(40), { env: GIT_ENV })).toBe(0);
+  });
+
+  it('takes no count at all when the caller supplied no base', async () => {
+    const repo = await makeRepo({ dir: join(dir, 'w5'), files: { 'src/a.ts': 'export {};\n' } });
+
+    const audit = createScopeAudit({ env: GIT_ENV });
+
+    expect(
+      (await audit({ node: NODE, attempt: 0, worktree: repo.dir, declared: ['src/**'] }))
+        .commitsAhead,
+    ).toBe(0);
   });
 });
 

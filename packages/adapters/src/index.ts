@@ -437,13 +437,19 @@ export {
 // runner asks "did this land outside what the plan declared", and the one place
 // `node.scope_warning` is written.
 export type {
+  CompletionAudit,
   NodeScopeWarning,
   ScopeAudit,
   ScopeAuditPorts,
   ScopeAuditRequest,
+  ScopeAuditResult,
   ScopeAuditSubject,
 } from './scope-audit.ts';
-export { auditCompletionScope, scopeAuditRefusal } from './scope-audit.ts';
+export {
+  auditCompletionScope,
+  scopeAuditRefusal,
+  workProductRefusal,
+} from './scope-audit.ts';
 // KAR-05.5 AC6 — `session/load` is not `session/resume`: bounded, deduped on
 // DeFlow's own event ids, and never selected automatically.
 export type {

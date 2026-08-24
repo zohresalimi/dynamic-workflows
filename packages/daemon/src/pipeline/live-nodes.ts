@@ -252,6 +252,9 @@ interface ShimTurnInput {
   /** `binaryForRoute(resolution, 'shim')` — the vendor's own CLI. */
   readonly binaryPath: string;
   readonly worktree: string;
+  /** KAR-23.11 — the commit the worktree was provisioned from, or `null` when
+   * git could not say. */
+  readonly baseOid: string | null;
   readonly prompt: string;
   readonly outputSchemaId: SchemaId | null;
   readonly env: Readonly<Record<string, string>>;
@@ -359,6 +362,7 @@ async function runShimTurn(input: ShimTurnInput): Promise<ShimNodeOutcome> {
         schemaDocument,
         env: { ...input.env },
         pathScope: [...command.pathScopes.write],
+        ...(input.baseOid === null ? {} : { baseOid: input.baseOid }),
         sandbox: {
           // The **detected** version the probed row records, never a default:
           // a gate compared against an assumed version silently stops applying.
@@ -514,6 +518,21 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
       branch: nodeBranch(runRef(ctx.runId), command.node),
     });
 
+    // KAR-23.11 — the commit this worktree started from, resolved once, right
+    // after provisioning. The completion audit counts commits since it so an
+    // agent that commits its own work is not mistaken for one that produced
+    // nothing — and on 2026-08-24 four nodes reached `node.completed` with
+    // exactly zero of both while the run looked healthy.
+    //
+    // `null` on a failure rather than a throw: a base DeFlow could not read is a
+    // count it cannot take, which leaves `git status` alone deciding — the same
+    // evidence the check had before this line existed, never a licence to skip
+    // it.
+    const baseOid = await git
+      .run(['rev-parse', 'HEAD'], { cwd: provisioned.path })
+      .then((result) => (result.exitCode === 0 ? result.stdout.trim() : null))
+      .catch(() => null);
+
     try {
       const built = await buildPacket({
         runId: ctx.runId,
@@ -590,6 +609,7 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
               chosen,
               binaryPath,
               worktree: provisioned.path,
+              baseOid,
               prompt,
               outputSchemaId,
               env,
@@ -626,6 +646,7 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
                   prompt,
                   pins: built.packet.segments.filter((segment) => segment.pinned),
                   pathScope: [...command.pathScopes.write],
+                  ...(baseOid === null ? {} : { baseOid }),
                   ...(outputSchemaId === null ? {} : { outputSchemaId }),
                 },
                 {

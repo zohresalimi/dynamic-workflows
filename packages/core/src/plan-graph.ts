@@ -49,7 +49,7 @@ import {
   SchemaIdSchema,
 } from './ids.ts';
 import type { ItemIdFrom } from './map-child-id.ts';
-import { NodeFailureReasonSchema } from './node-failure.ts';
+import type { NodeFailureReason } from './node-failure.ts';
 import { DEFAULT_BACKOFF, DEFAULT_MAX_ATTEMPTS } from './retry-defaults.ts';
 
 /** `PlanGraph.schemaId` is a fixed literal, not an open `SchemaId`: this
@@ -88,6 +88,60 @@ export const PathScopeSchema = z.strictObject({
 export type PathScope = z.infer<typeof PathScopeSchema>;
 
 /**
+ * KAR-23.11 — the failure reasons a **plan document** may name in a retry
+ * policy: exactly the set that existed when `DeFlow.plangraph.v1` shipped.
+ *
+ * Frozen, and the freezing is what makes the taxonomy growable at all.
+ * `NODE_FAILURE_REASONS` is embedded in two published, hash-pinned document
+ * schemas through `RetryPolicySchema.onFailure[].when`
+ * (`schemas/DeFlow.plangraph.v1.json`, `schemas/DeFlow.planpatch.v1.json`,
+ * both held byte-identical by `packages/core/test/schemas-append-only.test.ts`).
+ * Widening the enum naively would change those bytes and demand a
+ * `plangraph.v2` for every new failure reason DeFlow ever learns to report.
+ *
+ * `satisfies readonly NodeFailureReason[]` rather than a copied string list, so
+ * *deleting* a reason from the taxonomy is a compile error here. What this list
+ * deliberately does not do is grow with it: a reason added after v1 shipped is
+ * one no v1 document could ever have named, so admitting it would be a widening
+ * of the published schema wearing a convenience's clothes.
+ *
+ * `contract.no-work-product` is therefore not plan-authorable, and that is
+ * correct rather than a gap: it is DeFlow's own verdict on the node, and its
+ * class is `permanent` by construction — there is nothing for a retry policy to
+ * decide. Admitting it would require `DeFlow.plangraph.v2`.
+ */
+export const PLAN_AUTHORABLE_FAILURE_REASONS = [
+  'adapter.spawn-failed',
+  'adapter.handshake-failed',
+  'adapter.frame-too-large',
+  'adapter.protocol-error',
+  'adapter.malformed-output',
+  'adapter.capability-missing',
+  'agent.nonzero-exit',
+  'agent.refused',
+  'agent.max-turns',
+  'agent.schema-repair-exhausted',
+  'contract.schema-invalid',
+  'contract.handoff-oversize',
+  'safety.pin-integrity-violated',
+  'safety.pathscope-violation',
+  'safety.permission-unschedulable',
+  'safety.execution-boundary',
+  'budget.cost-exceeded',
+  'budget.wallclock-exceeded',
+  'timeout',
+  'provider.rate-limited',
+  'provider.unavailable',
+  'effect.reconcile-unknown',
+  'effect.request-hash-mismatch',
+  'dependency.failed',
+  'gate.failed',
+  'internal',
+] as const satisfies readonly NodeFailureReason[];
+
+export type PlanAuthorableFailureReason = (typeof PLAN_AUTHORABLE_FAILURE_REASONS)[number];
+
+/**
  * Full jitter, and only full jitter: the `jitter` field is a literal rather
  * than an enum because 05-durable-execution §10.3 names one strategy, and an
  * "equal"/"decorrelated" option nobody implements is a field that lies.
@@ -100,11 +154,14 @@ export const RetryPolicySchema = z.strictObject({
     jitter: z.literal('full'),
   }),
   /** F4.5 — "retry with a different provider" is policy on the node, not a
-   * decision buried in the scheduler. */
+   * decision buried in the scheduler. Pinned to
+   * {@link PLAN_AUTHORABLE_FAILURE_REASONS} rather than to the live taxonomy,
+   * so a reason added after v1 shipped does not rewrite a published schema's
+   * bytes. */
   onFailure: z
     .array(
       z.strictObject({
-        when: NodeFailureReasonSchema,
+        when: z.enum(PLAN_AUTHORABLE_FAILURE_REASONS),
         action: z.enum(['retry', 'reroute', 'escalate']),
       }),
     )

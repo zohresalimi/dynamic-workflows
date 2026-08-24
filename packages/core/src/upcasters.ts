@@ -31,10 +31,12 @@ import type { z } from 'zod';
 import {
   BudgetConsumedSchema,
   BudgetExceededSchema,
+  EffectFailedSchema,
   EVENT_CURRENT_VERSIONS,
   GateEvaluatedSchema,
   HumanRequestedSchema,
   HumanRespondedSchema,
+  NodeFailedSchema,
   NodeStartedSchema,
   PlanPatchedSchema,
   PlanPatchProposedSchema,
@@ -1123,6 +1125,62 @@ registerUpcaster({
           'kind script only. Express the call as a script node, or drop it.',
       },
     ],
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `node.failed` v1 → v2 (KAR-23.11). See schemas/CHANGELOG.md.
+ *
+ * v2 widens `failure.reason` by one member, `contract.no-work-product`: a node
+ * that declared a write scope and finished its turn having changed nothing in
+ * its own worktree. On 2026-08-24 four such nodes reached `node.completed` over
+ * twenty-two minutes with zero commits and an empty diff each, and the run
+ * looked healthy. Nothing else changes, so the hop is the identity — every v1
+ * payload is already a valid v2 one, and no v1 payload can have carried a
+ * reason that did not exist yet.
+ */
+registerUpcaster({
+  kind: 'node.failed',
+  from: 1,
+  to: NodeFailedSchema,
+  fixture: {
+    node: 'implement',
+    attempt: 0,
+    failure: {
+      reason: 'timeout',
+      class: 'transient',
+      message: 'the agent hung mid-turn',
+      evidence: [`artifact://${'a'.repeat(64)}`],
+      occurredAtEvent: 7,
+      attempt: 0,
+    },
+  },
+  up: (payload) => payload,
+});
+
+/**
+ * `effect.failed` v1 → v2 (KAR-23.11). See schemas/CHANGELOG.md.
+ *
+ * The same widening, reached through the same `NodeFailureSchema` the payload
+ * embeds. Bumped beside `node.failed` rather than left behind: the two carry
+ * one shape, and a reader that trusted `effect.failed` v1 to mean "the pre-
+ * KAR-23.11 reason set" would be reading a payload that can now carry more.
+ */
+registerUpcaster({
+  kind: 'effect.failed',
+  from: 1,
+  to: EffectFailedSchema,
+  fixture: {
+    ikey: 'run_20260807T101500Z_ac1101/implement/0/0',
+    failure: {
+      reason: 'timeout',
+      class: 'transient',
+      message: 'the shell effect hung',
+      evidence: [`artifact://${'a'.repeat(64)}`],
+      occurredAtEvent: 7,
+      attempt: 0,
+    },
   },
   up: (payload) => payload,
 });
