@@ -21,7 +21,7 @@
  */
 import type { RunId } from '@DeFlow/core';
 import { openLedger, readRange } from '@DeFlow/ledger';
-import { makeRepo } from '@DeFlow/testkit';
+import { makeRepo, type Repo } from '@DeFlow/testkit';
 import { type ChildProcess, execFileSync, spawn, spawnSync } from 'node:child_process';
 import {
   existsSync,
@@ -308,6 +308,20 @@ export interface SmokeResult {
   readonly outputWhileRunning: boolean;
   /** Non-loopback connections attempted by any process in the scenario. */
   readonly outboundAttempts: readonly string[];
+  /**
+   * KAR-23.11 — the paths the run left behind in the operator's own
+   * repository, sorted.
+   *
+   * *"All the way to an executed node"* has to mean an executed node that
+   * **did** something, and until this field the scenario could not tell the
+   * difference: `node.completed` is a claim the ledger records, and on
+   * 2026-08-24 four nodes made that claim over twenty-two minutes having
+   * written nothing at all. This is the other kind of evidence — the diff the
+   * node's own branch carries over the commit the run started from, read back
+   * with plain `git` from the repository `deflow run` was invoked in, with no
+   * DeFlow code in the path at all.
+   */
+  readonly workProduct: readonly string[];
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
@@ -575,6 +589,31 @@ async function stopDaemon(dataDir: string): Promise<void> {
 const TERMINAL_KINDS = ['run.completed', 'run.aborted', 'run.needs_human', 'run.paused'];
 
 /**
+ * Every path the run's own branches added over `base`, sorted and de-duplicated.
+ *
+ * A node's work sits dirty in its worktree and is salvage-committed onto its
+ * branch at teardown (KAR-07.4), so after the run the whole of what it produced
+ * is `git diff base <its branch>`. Discovered through `for-each-ref` rather than
+ * by composing `DeFlow/<run>__<node>` here: a second implementation of D13's
+ * naming rule in a test is one that agrees with `branch-name.ts` right up until
+ * somebody changes it, and the question this answers — *"did anything come out
+ * of this run"* — does not need to know which node did it.
+ */
+async function workProductOf(repo: Repo, base: string): Promise<readonly string[]> {
+  const refs = (await repo.git('for-each-ref', '--format=%(refname:short)', 'refs/heads/DeFlow'))
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => line !== '');
+  const paths = new Set<string>();
+  for (const ref of refs) {
+    for (const path of (await repo.git('diff', '--name-only', base, ref)).split('\n')) {
+      if (path.trim() !== '') paths.add(path.trim());
+    }
+  }
+  return [...paths].toSorted();
+}
+
+/**
  * Runs the whole scenario and returns what the ledger and the terminal say.
  *
  * Throws `SmokeStageMissing` at the first stage that does not happen, which is
@@ -618,6 +657,9 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
     writeFileSync(join(repo.dir, '.DeFlow', 'gates', 'typecheck.yaml'), TYPECHECK_GATE, 'utf8');
     await repo.git('add', '-A');
     await repo.git('commit', '-m', 'DeFlow smoke: initialise the workspace');
+    // The commit every node's worktree is provisioned from, and therefore the
+    // only honest base for "what did this run produce".
+    const base = (await repo.git('rev-parse', 'HEAD')).trim();
 
     // ── `deflow run --file spec.md` ─────────────────────────────────────────
     cli = spawnCli({ distDir, argv: ['run', '--file', 'spec.md'], cwd: repo.dir, env });
@@ -775,6 +817,7 @@ export async function runSmokeScenario(options: SmokeOptions = {}): Promise<Smok
       outboundAttempts: existsSync(netLog)
         ? readFileSync(netLog, 'utf8').split('\n').filter(Boolean)
         : [],
+      workProduct: await workProductOf(repo, base),
     };
   } finally {
     if (cli !== null && cli.child.exitCode === null) {

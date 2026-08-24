@@ -62,6 +62,24 @@ export const NODE_FAILURE_REASONS = [
   // contract
   'contract.schema-invalid',
   'contract.handoff-oversize',
+  /**
+   * KAR-23.11 — the node declared a write scope and finished its turn having
+   * changed nothing inside its own worktree (F5.3).
+   *
+   * On 2026-08-24, `run_20260824T143505Z_3a7365` took four implementation nodes
+   * to `node.completed` over twenty-two minutes. Every one of their branches
+   * holds zero commits and an empty diff against main, and the completion
+   * payloads carry `artifacts: []` beside an `output.text` saying, in the
+   * agent's own words, *"I am blocked before any code could land"* and *"I
+   * wrote no files"*. Nothing in the ledger, the CLI or the UI noticed. DeFlow
+   * could not tell a node that implemented a feature from a node that reported
+   * being unable to start.
+   *
+   * **Not `agent.refused`**, which §8 defines as *"stopReason indicated
+   * refusal"* — these turns ended `end_turn`. Reusing it would have been zero
+   * schema work and a quiet lie in the ledger.
+   */
+  'contract.no-work-product',
   // safety
   'safety.pin-integrity-violated',
   'safety.pathscope-violation',

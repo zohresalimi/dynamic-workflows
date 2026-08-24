@@ -47,6 +47,7 @@ const REASONS_FROM_THE_SPEC = [
   // contract
   'contract.schema-invalid',
   'contract.handoff-oversize',
+  'contract.no-work-product',
   // safety
   'safety.pin-integrity-violated',
   'safety.pathscope-violation',

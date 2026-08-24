@@ -23,7 +23,7 @@
  *
  * Verifies: EPIC-08-S30 · AC3, AC5, AC6
  */
-import type { NodeScopeWarning, ScopeAudit } from '@DeFlow/adapters';
+import type { NodeScopeWarning, ScopeAudit, ScopeAuditResult } from '@DeFlow/adapters';
 import { type NodeId, pathScopeMatches, relativeToWorktree } from '@DeFlow/core';
 import { type RunGitOptions, runGit } from '../git/run-git.ts';
 import { parseStatusPorcelainV2 } from '../git/status-porcelain.ts';
@@ -109,9 +109,44 @@ export function scopeWarningOf(
 }
 
 /**
- * The two halves above, wired into the port `runAcpNode` and `runShimNode`
- * call on completion (KAR-08.7 AC3) — this is what makes the backstop part of
- * the running system rather than a library beside it.
+ * KAR-23.11 — how many commits `worktree`'s HEAD is ahead of `baseOid`.
+ *
+ * The other half of *"did this node do anything at all"*, and it is not
+ * optional. DeFlow's model is that a node's work sits dirty in the worktree and
+ * is salvage-committed at teardown, so `changedPaths` is normally the whole
+ * answer — but an agent that commits its own work leaves a *clean* status, and
+ * failing that node would be the worst false positive available. This closes it,
+ * and it is literally the measurement `run_20260824T143505Z_3a7365` was
+ * diagnosed with: *"0 commits and an empty diff"*.
+ *
+ * Through the same `runGit` seam as everything else in this module — §11.4's
+ * one kill site, which `test/one-kill-site.test.ts` enforces.
+ *
+ * `0` when the count cannot be taken: an unknown `baseOid` (a worktree
+ * provisioned by a different mechanism, a base rewritten under us) makes
+ * `rev-list` exit non-zero, and the honest reading of that is *"git could not
+ * tell us"*, which is what `git status` alone already reports. Never a throw:
+ * this runs immediately before a completion decision, and an exception here
+ * would fail a node for the auditor's own inability to measure it.
+ */
+export async function commitsAheadOf(
+  worktree: string,
+  baseOid: string,
+  options: RunGitOptions = {},
+): Promise<number> {
+  try {
+    const result = await runGit(worktree, ['rev-list', '--count', `${baseOid}..HEAD`], options);
+    const count = Number.parseInt(result.stdout.trim(), 10);
+    return Number.isNaN(count) ? 0 : count;
+  } catch {
+    return 0;
+  }
+}
+
+/**
+ * The halves above, wired into the port `runAcpNode` and `runShimNode`
+ * call on completion (KAR-08.7 AC3, KAR-23.11) — this is what makes the
+ * backstop part of the running system rather than a library beside it.
  *
  * Built as a factory rather than exported as a bare function so the `git`
  * environment is decided once, by the daemon, at the place that knows it: a
@@ -120,12 +155,21 @@ export function scopeWarningOf(
  * actually works in (`run-git.ts`).
  */
 export function createScopeAudit(options: RunGitOptions = {}): ScopeAudit {
-  return async (request): Promise<NodeScopeWarning | null> =>
-    scopeWarningOf(
-      request.node,
-      request.attempt,
-      request.worktree,
-      request.declared,
-      await changedPaths(request.worktree, options),
-    );
+  return async (request): Promise<ScopeAuditResult> => {
+    const changed = await changedPaths(request.worktree, options);
+    return {
+      changed,
+      commitsAhead:
+        request.baseOid === undefined
+          ? 0
+          : await commitsAheadOf(request.worktree, request.baseOid, options),
+      warning: scopeWarningOf(
+        request.node,
+        request.attempt,
+        request.worktree,
+        request.declared,
+        changed,
+      ),
+    };
+  };
 }

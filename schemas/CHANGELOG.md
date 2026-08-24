@@ -62,6 +62,59 @@ file is where you record it.
 
 ## Entries
 
+### node.failed v2, effect.failed v2
+
+**KAR-23.11.** `failure.reason` widens by one member, `contract.no-work-product`: a node that
+declared a non-empty `pathScopes.write` and finished its turn having changed no file and made no
+commit in its own worktree. Both payloads embed `NodeFailureSchema`, so both move together — a reader
+that trusted `effect.failed` v1 to mean "the pre-KAR-23.11 reason set" would be reading a payload
+that can now carry more.
+
+| Change                          | Kind     | Why it is not lossy                                                                                                     |
+| ------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `failure.reason` gains a member | widening | Every v1 payload is already a valid v2 one — both hops are the identity — and no v1 payload can have carried the reason. |
+
+Both hops are registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**What it is for.** On 2026-08-24, `run_20260824T143505Z_3a7365` took four implementation nodes to
+`node.completed` over twenty-two minutes. Every branch `DeFlow/run_20260824t143505z_3a7365__*` holds
+zero commits and an empty diff against main. The completion payloads carry `artifacts: []` beside an
+`output.text` saying, in the agent's own words, _"I am blocked before any code could land"_ and _"I
+wrote no files"_. Nothing in the ledger, the CLI or the UI noticed; the run looked healthy. The
+underlying cause is fixed elsewhere (MET-1009's unwired permission fronts), but DeFlow still could
+not tell a node that implemented a feature from a node that reported being unable to start.
+
+**The rule.** At the completion chokepoint (`packages/adapters/src/scope-audit.ts`), a node whose
+plan-declared `pathScopes.write` is non-empty must have left at least one changed, renamed or
+untracked path, **or** at least one commit on its branch since the commit it was provisioned from. If
+neither, the attempt is a `node.failed`, appended with `budget.consumed` in one transaction —
+twenty-two failed minutes are still spend.
+
+The commit count is not optional polish. DeFlow's model is that a node's work sits dirty and is
+salvage-committed at teardown, so `git status` is normally the whole answer; an agent that commits
+its own work would show a clean status, and failing *that* node would be the worst false positive
+available. It is also literally the measurement the incident was diagnosed with.
+
+**How a legitimately-empty node stays green.** It declares `pathScopes.write: []`, and
+`auditCompletionScope` already returns early for exactly that — a reviewer, a verification agent, a
+node that only returns a document is never even asked. The planner packet's `plan-rules` brief states
+that as a plan-authoring rule up front, which converts the one realistic false-positive class into
+something the planner is told before it costs a turn.
+
+**Why not `agent.refused`.** Zero schema work, and a lie:
+[§8](../docs/04-domain-model.md) defines it as _"stopReason indicated refusal"_, and these turns
+ended `end_turn`. `DeFlow.toolresult.v1` below is the precedent for choosing the bigger diff over a
+quiet lie in the ledger.
+
+**Why no `plangraph.v2`.** `NODE_FAILURE_REASONS` was embedded in two published document schemas
+through `RetryPolicySchema.onFailure[].when`, so widening it would have rewritten the bytes of
+`DeFlow.plangraph.v1.json` and `DeFlow.planpatch.v1.json`. Those are now pinned to a new frozen
+`PLAN_AUTHORABLE_FAILURE_REASONS` — the reasons that existed when v1 shipped, held to the taxonomy by
+`satisfies readonly NodeFailureReason[]` so a *deletion* is a compile error. Both emitted files stay
+byte-identical and `schemas-append-only.test.ts` needed no hash edited. A retry policy therefore
+cannot name `contract.no-work-product`, which is correct rather than a gap: it is DeFlow's own verdict
+on the node, and its class is `permanent` by construction.
+
 ### DeFlow.toolresult.v1
 
 **KAR-23.9.** A new document, not a version bump: nothing shipped under this id before, because
@@ -411,6 +464,44 @@ of the *document* rather than of any node, so it carries the `PLAN_SCOPE` sentin
 payload schema that accepted only valid `NodeId`s would make the append throw on exactly the two
 faults the validator exists to catch, which is a worse failure than the one it was preventing. The
 sentinel's parentheses keep it outside the charset a real id could ever occupy.
+
+### plan.validation_failed v5
+
+**KAR-23.13.** `diagnostics[].code` widens by two more members, `TOOL_PERMISSION_UNSCHEDULABLE` and
+`TOOL_COMMAND_REFUSED`: a `tool` node asking for `permission: 'full'`, and a `tool` node whose `run`
+line the F5.6 destructive-command deny list refuses.
+
+| Change                                 | Kind     | Why it is not lossy                                                                                                   |
+| -------------------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `diagnostics[].code` gains two members | widening | Every v4 payload is already a valid v5 one — the hop is the identity — and no v4 payload can have carried either code. |
+
+The hop is registered at the bottom of `packages/core/src/upcasters.ts`.
+
+**Why the check moved.** On 2026-08-24, `run_20260824T174326Z_3b9ba1` validated its plan, fired
+`run.started`, and lost all fourteen of its nodes inside one second: one
+`safety.permission-unschedulable` — _"tool node branch-setup asks for permission level full"_ — and
+thirteen `dependency.failed` behind it. **The refusal was correct and is unchanged.** What was wrong
+is where it was discovered: `node.type`, `tool.kind`, `permission` and the `run` line are all plan
+content, fixed the moment the planner wrote the document, and every one of them was knowable when
+validation ran. The previous run's node for the same work asked for `worktree` and ran fine; this one
+asked for `full`, and the planner was never told it had made a refusable choice.
+
+`packages/core/src/tool-node-rules.ts` is now the single implementation of all three refusals;
+`validate-plan.ts` files them as repairable diagnostics and `pipeline/tool-node.ts` throws them as
+`NodeFailure`s. The performer's copy stays as the **backstop**, because a plan reaches `perform()` by
+paths validation does not gate — a resumed run, a document compiled by an older build, a patch.
+
+**Why the deny list is included even though `CommandContext` carries paths.** Three of its rules read
+the worktree, and at plan time there is no worktree. They judge the line against a synthetic root
+(`PLAN_TIME_COMMAND_CONTEXT_ROOT`), with `cwd` resolved from the node's own `tool.cwd` exactly as
+`perform()` resolves it against the real one. Every *relative* argument gets the identical verdict;
+the only divergence is an *absolute* path that happens to sit inside the real worktree — a path a
+planner cannot know and must never write. So plan time is equal-or-stricter than run time, never
+laxer, and a strictly-stricter verdict costs one repairable diagnostic rather than a security hole.
+
+**Named after the run-time reason it prevents.** `TOOL_PERMISSION_UNSCHEDULABLE` mirrors
+`safety.permission-unschedulable`, so an operator grepping a ledger for the incident finds both ends
+of it — the diagnostic that should have caught it and the failure that did.
 
 ### plan.validation_failed v4
 

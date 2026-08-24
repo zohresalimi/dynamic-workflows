@@ -71,6 +71,24 @@ export const PLAN_DIAGNOSTIC_CODES = [
    * repair is different: the *node* is fine and its work has to be expressed
    * another way. KAR-23.9. */
   'TOOL_KIND_UNPERFORMABLE',
+  /**
+   * §3.2 — a `tool` node asking for `permission: 'full'`. KAR-23.13.
+   *
+   * Named after the run-time reason it prevents
+   * (`safety.permission-unschedulable`), so grepping a ledger for the incident
+   * finds both ends of it. On 2026-08-24 `run_20260824T174326Z_3b9ba1`
+   * validated, fired `run.started`, and lost all fourteen of its nodes inside a
+   * second: one of these and thirteen `dependency.failed` behind it. The
+   * refusal was right; discovering it at execution was not, because
+   * `permission` is plan content and the planner was never told it had made a
+   * refusable choice.
+   */
+  'TOOL_PERMISSION_UNSCHEDULABLE',
+  /** §3.2 / F5.6 — a `tool` node whose `run` line the destructive-command deny
+   * list refuses. A pure function of plan content, so it is 100% knowable when
+   * the plan is validated, and discovering it at execution costs the whole DAG.
+   * KAR-23.13. */
+  'TOOL_COMMAND_REFUSED',
 ] as const;
 
 export type PlanDiagnosticCode = (typeof PLAN_DIAGNOSTIC_CODES)[number];

@@ -86,6 +86,7 @@ import {
 } from '@DeFlow/core';
 import { appendEvents, listProviderCapabilities, persistPlanVersion } from '@DeFlow/ledger';
 import { join } from 'node:path';
+import { PERFORMABLE_NODE_TYPES, PERFORMABLE_TOOL_KINDS } from '../exec/performable.ts';
 import type { HandoffValidator } from '../handoff/enforce.ts';
 import { type NodeRefChecker, validatePlanVersion } from './validate.ts';
 
@@ -388,6 +389,15 @@ export async function compilePlanV1(options: CompilePlanOptions): Promise<Compil
       ...(options.constraints === undefined ? {} : { constraints: options.constraints }),
       facts: options.facts,
       capabilities,
+      // KAR-23.13 — the same two constants `plan/validate.ts` enforces against,
+      // so what the packet promises the planner and what validation refuses are
+      // one fact. The rules segment they render ships on attempt 0, which is
+      // the point: three consecutive runs had their *first* plan rejected, and
+      // a rule carried only on the retry arrives one turn too late.
+      performable: {
+        nodeTypes: PERFORMABLE_NODE_TYPES,
+        toolKinds: PERFORMABLE_TOOL_KINDS,
+      },
       // §3.5 — the retry's packet carries the diagnostics **verbatim**. A
       // `task.brief`, not a fact: this is an instruction to the planner about
       // the document it just wrote, not something anybody measured.

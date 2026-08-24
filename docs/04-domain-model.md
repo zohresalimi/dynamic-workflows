@@ -684,6 +684,7 @@ export type NodeFailureReason =
   // contract
   | "contract.schema-invalid" // output failed Ajv validation (F6.9)
   | "contract.handoff-oversize" // over returns.maxTokens after a bounded repair (F6.4)
+  | "contract.no-work-product" // declared a write scope and changed nothing in it (F5.3)
   // safety
   | "safety.pin-integrity-violated" // a pinned segment did not survive into the prompt (F6.6)
   | "safety.pathscope-violation" // wrote outside its declared scope (F5.3)

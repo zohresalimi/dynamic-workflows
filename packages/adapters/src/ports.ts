@@ -359,6 +359,15 @@ export interface AcpNodeRequest {
    */
   readonly pathScope?: readonly string[];
   /**
+   * KAR-23.11 — the commit this node's worktree was provisioned from.
+   *
+   * The completion audit counts commits since it, so an agent that commits its
+   * own work is not mistaken for one that produced nothing. Absent means the
+   * count is `0` and `git status` alone decides — honest for a caller with no
+   * git underneath it, and never a licence to skip the check.
+   */
+  readonly baseOid?: string;
+  /**
    * KAR-14.4 AC1 — the JSON-RPC error codes this adapter is known to answer
    * with when the vendor's quota is exhausted.
    *

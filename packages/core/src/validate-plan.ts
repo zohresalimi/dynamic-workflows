@@ -64,6 +64,7 @@ import type {
 import { coveredByGatesOf, revalidateSpecAgainstPlan } from './spec-approval.ts';
 import type { TaskSpec } from './task-spec.ts';
 import { toSingleLine } from './text.ts';
+import { toolNodeRefusals } from './tool-node-rules.ts';
 import { PlanCycleError, topoSort } from './topo-sort.ts';
 import { satisfies, validateDeclaredReads } from './validate-declared-reads.ts';
 
@@ -558,18 +559,22 @@ function performableDiagnostics(
     }
 
     if (node.type !== 'tool') continue;
-    const kind: ToolKind = node.tool.kind;
-    if (kinds.includes(kind)) continue;
-    diagnostics.push({
-      severity: 'error',
-      code: 'TOOL_KIND_UNPERFORMABLE',
-      node: node.id,
-      key: kind,
-      message: toSingleLine(
-        `tool node '${node.id}' is of kind '${kind}', and this daemon can run tool nodes of ` +
-          `kind ${[...kinds].join(', ')} only. Express the call as a script node, or drop it.`,
-      ),
-    });
+    // KAR-23.13 — the tool node's static refusals, read from the rule module
+    // the performer applies rather than restated here. `TOOL_KIND_UNPERFORMABLE`
+    // used to be spelled out at this spot; it moved verbatim, which is why the
+    // suite pinning its sentence is a regression guard rather than a snapshot.
+    //
+    // Every refusal, not the first: §3.5 allows the planner one retry, so a
+    // node that is both `full` and `terraform apply` must be repairable in one.
+    for (const refusal of toolNodeRefusals(node, kinds)) {
+      diagnostics.push({
+        severity: 'error',
+        code: refusal.code,
+        node: node.id,
+        key: refusal.key,
+        message: refusal.message,
+      });
+    }
   }
 
   return diagnostics;

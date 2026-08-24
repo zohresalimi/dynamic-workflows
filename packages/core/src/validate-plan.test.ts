@@ -803,3 +803,99 @@ suite('KAR-23.9 — a plan naming work nobody can perform is refused at plan tim
     ).toEqual([]);
   });
 });
+
+suite('KAR-23.13 — a tool node’s static refusals are diagnostics, not run-time deaths', () => {
+  it('a full tool node is one blocking TOOL_PERMISSION_UNSCHEDULABLE naming the node and the level', () => {
+    // The 2026-08-24 incident, at the moment it was knowable:
+    // `run_20260824T174326Z_3b9ba1` validated, started, and lost all fourteen
+    // nodes inside a second to this exact refusal plus thirteen
+    // `dependency.failed`. `permission` is plan content.
+    const found = performableCheck(
+      graph([
+        toolNode({
+          id: 'branch-setup',
+          tool: { kind: 'script', run: 'git checkout -b feature' },
+          permission: 'full',
+        }),
+        gate('gate-typecheck', ['ac-1']),
+      ]),
+    );
+    const refused = found.filter((one) => one.code === 'TOOL_PERMISSION_UNSCHEDULABLE');
+
+    expect(refused).toMatchObject([{ severity: 'error', node: 'branch-setup', key: 'full' }]);
+    expect(refused[0]?.message).toContain('full is not a sandbox');
+    expect(refused[0]?.message).toContain("'worktree'");
+    expect(hasBlockingDiagnostic(found)).toBe(true);
+  });
+
+  it('a tool node at a level DeFlow enforces is clean', () => {
+    for (const permission of ['read', 'worktree', 'worktree+net']) {
+      expect(
+        performableCheck(
+          graph([
+            toolNode({ tool: { kind: 'script', run: 'pnpm install' }, permission }),
+            gate('gate-typecheck', ['ac-1']),
+          ]),
+        ),
+        permission,
+      ).toEqual([]);
+    }
+  });
+
+  it('an agent node at full is NOT diagnosed — this story refuses tool nodes only', () => {
+    // The boundary. `fullPermissionIssues` still has no production caller and
+    // wiring F5.4's per-run opt-in is its own story; what the tool performer
+    // refuses today is what validation refuses now, and nothing more.
+    expect(
+      performableCheck(
+        graph([agent('impl', { permission: 'full' }), gate('gate-typecheck', ['ac-1'])]),
+      ).filter((one) => one.code === 'TOOL_PERMISSION_UNSCHEDULABLE'),
+    ).toEqual([]);
+  });
+
+  it('a deny-listed run line is one blocking TOOL_COMMAND_REFUSED', () => {
+    const found = performableCheck(
+      graph([
+        toolNode({ id: 'deploy', tool: { kind: 'script', run: 'terraform apply -auto-approve' } }),
+        gate('gate-typecheck', ['ac-1']),
+      ]),
+    );
+    const refused = found.filter((one) => one.code === 'TOOL_COMMAND_REFUSED');
+
+    expect(refused).toMatchObject([{ severity: 'error', node: 'deploy', key: 'terraform-apply' }]);
+    expect(refused[0]?.message).toContain('terraform apply -auto-approve');
+    expect(hasBlockingDiagnostic(found)).toBe(true);
+  });
+
+  it('leaves the everyday build verbs a plan is made of alone', () => {
+    for (const run of ['git checkout -b feature', 'pnpm install', 'rm -rf ./build']) {
+      expect(
+        performableCheck(
+          graph([
+            toolNode({ tool: { kind: 'script', run }, permission: 'worktree' }),
+            gate('gate-typecheck', ['ac-1']),
+          ]),
+        ),
+        run,
+      ).toEqual([]);
+    }
+  });
+
+  it('reports both faults of one node, so a two-fault plan costs one retry and not two', () => {
+    const found = performableCheck(
+      graph([
+        toolNode({
+          id: 'deploy',
+          tool: { kind: 'script', run: 'terraform destroy' },
+          permission: 'full',
+        }),
+        gate('gate-typecheck', ['ac-1']),
+      ]),
+    );
+
+    expect(found.map((one) => one.code).toSorted()).toEqual([
+      'TOOL_COMMAND_REFUSED',
+      'TOOL_PERMISSION_UNSCHEDULABLE',
+    ]);
+  });
+});

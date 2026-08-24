@@ -94,7 +94,28 @@ const worktreeOf = (s: Scene): string => worktreePathFor(s.repoDir, s.runId as R
  * observable separately: the ladder answers the question, and the fs front
  * carries out (or refuses) the act.
  */
-function askThenWrite(path: string): unknown {
+/**
+ * `fallbackWrite` is KAR-23.11's doing, and it is not scaffolding: a node whose
+ * plan declares a write scope and which finishes having changed nothing now
+ * fails as `contract.no-work-product` rather than completing. The out-of-scope
+ * scenario below is *about* a denial the node survives, so the agent has to do
+ * some real, in-scope work as well — which is what a mediated agent taking its
+ * "the user declined" branch would actually do.
+ */
+function askThenWrite(path: string, fallbackWrite?: string): unknown {
+  const declined = [
+    ...(fallbackWrite === undefined
+      ? []
+      : [
+          {
+            type: 'clientCall',
+            method: 'fs/write_text_file',
+            params: { path: fallbackWrite, content: 'export const note = "declined";\n' },
+            onError: { steps: [{ type: 'message', text: 'the fallback write was refused' }] },
+          },
+        ]),
+    { type: 'message', text: 'refused' },
+  ];
   return {
     name: 'ask-then-write',
     description: 'Asks permission for an edit, writes on allow, reports on reject.',
@@ -119,7 +140,7 @@ function askThenWrite(path: string): unknown {
             { type: 'message', text: 'wrote' },
           ],
         },
-        onRejected: { steps: [{ type: 'message', text: 'refused' }] },
+        onRejected: { steps: declined },
         onCancelled: { steps: [{ type: 'message', text: 'cancelled' }] },
       },
     ],
@@ -213,8 +234,13 @@ suite('KAR-23.10 — a write outside the declared scope is denied, not unanswere
     });
     try {
       const outOfScope = join(worktreeOf(s), 'packages', 'api', 'src', 'tokens.ts');
+      // Its declared scope, which is where the agent goes after the denial.
+      // KAR-23.11: a write-scoped node that finishes having changed nothing at
+      // all is now failed, and this scenario's claim is about the *request*
+      // being refused rather than about the node producing nothing.
+      const inScope = join(worktreeOf(s), 'packages', 'ui', 'src', 'session.ts');
       await mkdir(join(worktreeOf(s), '..'), { recursive: true }).catch(() => undefined);
-      await writeFile(scenarioPath, JSON.stringify(askThenWrite(outOfScope)), 'utf8');
+      await writeFile(scenarioPath, JSON.stringify(askThenWrite(outOfScope, inScope)), 'utf8');
 
       await driveToTheNode(s);
 

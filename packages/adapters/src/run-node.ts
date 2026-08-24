@@ -1227,17 +1227,57 @@ export async function runAcpNode(
   };
   // KAR-08.7 AC3 — the backstop, and this is the only moment it can run: the
   // child has exited, so the worktree is final, and the node has not been
-  // declared finished yet. A **warning** and nothing else — the completion
-  // below is unconditional, whatever the diff says (D14, §6.3).
-  await auditCompletionScope(
+  // declared finished yet. The *scope* half is a *warning* and nothing else —
+  // a completion below is unconditional as far as it is concerned (D14, §6.3).
+  const audited = await auditCompletionScope(
     {
       node: request.nodeId,
       attempt: request.attempt,
       worktree: request.worktree,
       declared: request.pathScope,
+      ...(request.baseOid === undefined ? {} : { baseOid: request.baseOid }),
+      artifacts: result.artifacts.length,
     },
     ports,
   );
+
+  // KAR-23.11 — the *work-product* half, which is a gate rather than a warning.
+  // A node whose plan declared a non-empty write scope and which finished its
+  // turn having changed no file and made no commit did not do the work the plan
+  // promised, and completing it is what made four empty branches look like a
+  // healthy run on 2026-08-24. The spend is still spend, so `budget.consumed`
+  // and `node.failed` go in one transaction, exactly as the completion below
+  // does — twenty-two failed minutes cost the same as twenty-two good ones.
+  if (audited.refusal !== null) {
+    const failure: NodeFailure = {
+      ...toAdapterFailure(audited.refusal, {
+        occurredAtEvent: lastSeq,
+        attempt: request.attempt,
+        captureEvidence: ports.captureEvidence,
+      }),
+      // The agent's own account of the turn, kept as a handle rather than
+      // parsed. DeFlow does not sniff for apologies — it measures the worktree
+      // — and it keeps the text so the human reading the failure sees what the
+      // incident's investigator had to go looking for.
+      evidence: [ports.captureEvidence(turn.agentText)],
+    };
+    await ledger.appendAll([
+      event(
+        'budget.consumed',
+        budgetConsumed({
+          node: request.nodeId,
+          attempt: request.attempt,
+          provider: request.provider,
+          accounting: providerTokenAccounting(request.provider),
+          authMode: request.authMode ?? 'subscription',
+          reported: null,
+          estimate: result.usage,
+        }),
+      ),
+      event('node.failed', { node: request.nodeId, attempt: request.attempt, failure }),
+    ]);
+    return { ...common, status: 'failed', failure };
+  }
   // KAR-14.1 AC1 — the spend and the completion in one `BEGIN IMMEDIATE`.
   //
   // `reported: null` on this path is the honest answer, not a gap: whether ACP

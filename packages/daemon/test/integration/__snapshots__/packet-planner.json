@@ -14,12 +14,12 @@
     "limitTokens": 100000
   },
   "totals": {
-    "tokens": 638,
+    "tokens": 1141,
     "byKind": {
       "pinned.constraints": 15,
       "pinned.spec": 68,
       "pinned.pathscope": 0,
-      "task.brief": 0,
+      "task.brief": 503,
       "fact": 555,
       "artifact.handle": 0,
       "retrieved": 0,
@@ -27,7 +27,7 @@
       "tool.output": 0
     }
   },
-  "renderedPromptHandle": "artifact://4d6fdb2de66a6c86f394b2ebd741ce23e060fb82c110f0bba1b234947de34b66",
+  "renderedPromptHandle": "artifact://a20a84ff21f2dec46e6354e861d33d0851ba3dcdc0c87ac35fe94d13559c2f2d",
   "pinnedDigests": [
     "sha256-12f5d079b69b579cd78e17fc80ac8cff062cba8905e58091b29172209bbfecaf",
     "sha256-68638c99bae793ac820dec0c8d42e363982e0f827ca560a687c5c2eb92989fdb",
@@ -72,6 +72,19 @@
       "pinned": true,
       "compactable": false,
       "text": "Safety constraints (pinned):\n- No new runtime dependency."
+    },
+    {
+      "id": "plan-rules",
+      "kind": "task.brief",
+      "sourceEvent": 7,
+      "contentHash": "sha256-1069a389b1e2b2954673c1df85c7266b067a7f009f73a14aac31de8041bada7e",
+      "tokens": {
+        "estimated": 503,
+        "method": "heuristic"
+      },
+      "pinned": false,
+      "compactable": true,
+      "text": "Rules DeFlow enforces on this plan before the run starts. A plan that follows them validates\non the first attempt; a plan that does not comes back to you as diagnostics and costs a turn.\n\n- Node types: this daemon can run agent, gate and tool nodes, and answers human nodes with a person.\n  Any other node type has no performer and is refused.\n- Permission: ask for the least level the work needs — 'read' for a node that only reads,\n  'worktree' for one that edits files in its own worktree, 'worktree+net' when it must reach\n  the network. 'full' is not available to a tool node: full is not a sandbox, and no run-level\n  opt-in authorises it today, so a tool node at 'full' is refused at validation and never runs.\n  A branch, a checkout, an install or a build is 'worktree' work.\n- Tool nodes: tool.kind must be script. A script node's run line is handed to /bin/sh -c\n  inside the node's own worktree, as a single argument.\n  Kinds mcp and http have no performer here — express the call as a script node,\n  or plan the work as an agent node.\n- A run line may not perform an infrastructure action: no terraform apply or destroy, no\n  kubectl delete or apply, no aws, gcloud or az at all, no git push --force, no migration\n  deploy. If the task genuinely needs one, plan a human node that asks for it rather than a\n  script that does it.\n- Write scopes: pathScopes.write is this node's promise that it changes files. A node that\n  finishes without changing anything inside its declared write scope is failed, not completed.\n  Give a node that only reads, reviews, verifies or returns a document pathScopes.write: [],\n  and give a node that does write the narrowest globs that cover what it will write.\n- Coverage: every acceptance criterion in the pinned spec must be named in the criteria of at\n  least one active gate node, or the plan is rejected as CRITERION_UNCOVERED.\n- Blackboard keys: every key a node writes should be read by a later node; a written key\n  nothing reads is reported as ORPHAN_WRITE."
     },
     {
       "id": "fact-finding-test-command",

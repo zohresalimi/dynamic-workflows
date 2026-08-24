@@ -186,3 +186,12 @@ export {
   schemaIdOf,
   serveSchema,
 } from './structured.ts';
+// KAR-23.11 — the built-in turn's work product: what it writes, and why it
+// writes at all.
+export {
+  declaredWriteGlobs,
+  WORK_PRODUCT_BASENAME,
+  workProductContent,
+  workProductFor,
+  workProductPath,
+} from './work-product.ts';

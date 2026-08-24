@@ -56,6 +56,8 @@ import {
   heuristicTokens,
   type TokenEstimator,
 } from './pinned-set.ts';
+import type { NodeType, ToolKind } from './plan-graph.ts';
+import { TOOL_KINDS } from './plan-graph.ts';
 import { renderPacket } from './render-packet.ts';
 import type { TaskSpec } from './task-spec.ts';
 
@@ -108,6 +110,82 @@ export interface PlannerFact {
 /** The id of the one segment carrying the capability list, so the compiler,
  * the golden snapshot and the API all address it by the same name. */
 export const CAPABILITY_SEGMENT_ID = 'capabilities';
+
+/** The id of the segment carrying the rules validation will enforce. */
+export const PLAN_RULES_SEGMENT_ID = 'plan-rules';
+
+/** What the daemon about to run this plan can perform — the same shape
+ * `validatePlan` takes, supplied from the same constant, so the packet cannot
+ * promise something validation then refuses. */
+export interface PlannerPerformableSet {
+  readonly nodeTypes: readonly NodeType[];
+  readonly toolKinds: readonly ToolKind[];
+}
+
+/**
+ * KAR-23.13 — the rules DeFlow enforces on a plan **before** the run starts,
+ * stated positively and shipped on attempt 0.
+ *
+ * The economics are the whole argument. Three consecutive runs (MET-1007) had
+ * their first plan attempt rejected by validation — `CRITERION_UNCOVERED`,
+ * `ORPHAN_WRITE` — and each rejection costs one planner turn at maximum
+ * effort. `plannerDiagnosticsSegment` is the *reactive* half of §3.5 and
+ * arrives one turn too late by construction; this is the same vocabulary said
+ * up front, where it is free.
+ *
+ * A `task.brief` and unpinned, for the reason the diagnostics segment is one:
+ * a fact is something DeFlow measured about the repository, and this is an
+ * instruction about the document the planner is being asked to write. Nothing
+ * here was approved by a human either, so pinning it would put DeFlow's own
+ * house rules on the same footing as F1.3's approved spec.
+ *
+ * The node-type and tool-kind lists are **interpolated from `performable`**
+ * rather than written out, so widening `PERFORMABLE_TOOL_KINDS` updates the
+ * promise and the check together or neither.
+ */
+export function renderPlanRulesSegmentText(performable: PlannerPerformableSet): string {
+  const types = [...performable.nodeTypes];
+  const last = types.pop();
+  const typeList = last === undefined ? 'no node type at all' : `${types.join(', ')} and ${last}`;
+  const kinds = [...performable.toolKinds].join(', ');
+  const only = performable.toolKinds.length === 1 ? kinds : `one of ${kinds}`;
+  const unsupportedKinds = TOOL_KINDS.filter((kind) => !performable.toolKinds.includes(kind)).join(
+    ' and ',
+  );
+
+  return [
+    'Rules DeFlow enforces on this plan before the run starts. A plan that follows them validates',
+    'on the first attempt; a plan that does not comes back to you as diagnostics and costs a turn.',
+    '',
+    `- Node types: this daemon can run ${typeList} nodes, and answers human nodes with a person.`,
+    '  Any other node type has no performer and is refused.',
+    "- Permission: ask for the least level the work needs — 'read' for a node that only reads,",
+    "  'worktree' for one that edits files in its own worktree, 'worktree+net' when it must reach",
+    "  the network. 'full' is not available to a tool node: full is not a sandbox, and no run-level",
+    "  opt-in authorises it today, so a tool node at 'full' is refused at validation and never runs.",
+    "  A branch, a checkout, an install or a build is 'worktree' work.",
+    `- Tool nodes: tool.kind must be ${only}. A script node's run line is handed to /bin/sh -c`,
+    "  inside the node's own worktree, as a single argument.",
+    ...(unsupportedKinds === ''
+      ? []
+      : [
+          `  Kinds ${unsupportedKinds} have no performer here — express the call as a script node,`,
+          '  or plan the work as an agent node.',
+        ]),
+    '- A run line may not perform an infrastructure action: no terraform apply or destroy, no',
+    '  kubectl delete or apply, no aws, gcloud or az at all, no git push --force, no migration',
+    '  deploy. If the task genuinely needs one, plan a human node that asks for it rather than a',
+    '  script that does it.',
+    "- Write scopes: pathScopes.write is this node's promise that it changes files. A node that",
+    '  finishes without changing anything inside its declared write scope is failed, not completed.',
+    '  Give a node that only reads, reviews, verifies or returns a document pathScopes.write: [],',
+    '  and give a node that does write the narrowest globs that cover what it will write.',
+    '- Coverage: every acceptance criterion in the pinned spec must be named in the criteria of at',
+    '  least one active gate node, or the plan is rejected as CRITERION_UNCOVERED.',
+    '- Blackboard keys: every key a node writes should be read by a later node; a written key',
+    '  nothing reads is reported as ORPHAN_WRITE.',
+  ].join('\n');
+}
 
 /**
  * One capability question and what the probed row answered.
@@ -208,6 +286,15 @@ export interface PlannerPacketInput {
   /** F2.2's third input, materialised from `provider_capabilities` rows.
    * Required, and an empty array is a legitimate value that says so. */
   readonly capabilities: readonly PlannerCapability[];
+  /**
+   * KAR-23.13 — what the daemon about to run this plan can perform.
+   *
+   * **Required, not optional**, and for the same argument as `capabilities`: a
+   * packet assembled without it teaches the planner about an imagined daemon,
+   * and a rules segment that quietly said nothing would be worse than no rules
+   * segment, because the caller would still believe the planner was told.
+   */
+  readonly performable: PlannerPerformableSet;
   readonly segments?: readonly Segment[];
   readonly estimate?: TokenEstimator;
 }
@@ -263,6 +350,17 @@ export async function buildPlannerPacket(input: PlannerPacketInput): Promise<Con
     estimate,
   });
 
+  // KAR-23.13 — after the pinned spec, before the facts: the planner reads
+  // what it was asked for, then the house rules it must satisfy, then the
+  // measurements it plans against.
+  const rules = await contextSegment({
+    id: PLAN_RULES_SEGMENT_ID,
+    kind: 'task.brief',
+    text: renderPlanRulesSegmentText(input.performable),
+    sourceEvent: EventSeqSchema.parse(input.builtAtEvent),
+    estimate,
+  });
+
   const facts: Segment[] = [];
   for (const fact of input.facts) {
     facts.push(
@@ -290,7 +388,7 @@ export async function buildPlannerPacket(input: PlannerPacketInput): Promise<Con
     estimate,
   });
 
-  const segments = [...pinned, ...facts, capabilities, ...(input.segments ?? [])];
+  const segments = [...pinned, rules, ...facts, capabilities, ...(input.segments ?? [])];
   const prompt = renderPacket({ segments });
   const { budget } = resolveContextBudget({
     maxContext: input.target.maxContext,

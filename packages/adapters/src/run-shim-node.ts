@@ -349,6 +349,10 @@ export interface ShimNodeRequest {
    * it is refused before the spawn.
    */
   readonly pathScope?: readonly string[];
+  /** KAR-23.11 — the commit this node's worktree was provisioned from, so the
+   * completion audit can tell an agent that committed its own work from one
+   * that produced nothing. See `AcpNodeRequest.baseOid`. */
+  readonly baseOid?: string;
   /**
    * KAR-09.6 AC7, AC8 — what the operator configured about this vendor's own
    * auto-compaction, before the node's permission level is applied to it.
@@ -550,6 +554,10 @@ export async function runShimNode(
      * chart for a turn that never ran.
      */
     spent = false,
+    /** KAR-23.11 — evidence only the caller can name, appended to whatever the
+     * mapping already gathered. The work-product refusal uses it to keep the
+     * agent's own account of the turn. */
+    extraEvidence: readonly Handle[] = [],
   ): Promise<ShimNodeOutcome> => {
     const mapped = toAdapterFailure(thrown, {
       occurredAtEvent: lastSeq,
@@ -557,10 +565,14 @@ export async function runShimNode(
       captureEvidence: ports.captureEvidence,
     });
     const head = offendingFrameHead(thrown);
-    const failure: NodeFailure =
-      head === null
-        ? mapped
-        : { ...mapped, evidence: [...mapped.evidence, ports.captureEvidence(head)] };
+    const failure: NodeFailure = {
+      ...mapped,
+      evidence: [
+        ...mapped.evidence,
+        ...(head === null ? [] : [ports.captureEvidence(head)]),
+        ...extraEvidence,
+      ],
+    };
     const failed = event('node.failed', {
       node: request.nodeId,
       attempt: request.attempt,
@@ -1082,15 +1094,30 @@ export async function runShimNode(
   // KAR-08.7 AC3 — the same backstop the ACP path runs, at the same moment and
   // through the same chokepoint: the vendor has exited, so the worktree is
   // final, and the node is not finished until the line below.
-  await auditCompletionScope(
+  const audited = await auditCompletionScope(
     {
       node: request.nodeId,
       attempt: request.attempt,
       worktree: request.worktree,
       declared: request.pathScope,
+      ...(request.baseOid === undefined ? {} : { baseOid: request.baseOid }),
+      artifacts: result.artifacts.length,
     },
     ports,
   );
+
+  // KAR-23.11 — the work-product gate, on this route for the same reason it is
+  // on the other: a node that declared a write scope and finished having
+  // changed no file and made no commit did not do the work the plan promised.
+  // `spent = true`, so the spend and the failure land in one transaction — the
+  // twenty-two minutes the 2026-08-24 nodes burned are still spend.
+  if (audited.refusal !== null) {
+    // The agent's own account of the turn, kept as a handle rather than parsed.
+    // DeFlow does not sniff for apologies — it measures the worktree — and it
+    // keeps the text so the human reading the failure sees what the incident's
+    // investigator had to go looking for.
+    return refuse(audited.refusal, common(exit), true, [ports.captureEvidence(agentText)]);
+  }
   // KAR-14.1 AC1 — the spend and the completion in one `BEGIN IMMEDIATE`, so a
   // crash cannot leave a node that finished and a run that does not know what
   // it cost. Ordered spend-first, so any reader that has seen the completion

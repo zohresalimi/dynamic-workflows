@@ -28,6 +28,7 @@ import { createIdFactory } from './ids.ts';
 import { createProcessPorts, type MockAgentPorts } from './ports.ts';
 import type { Scenario } from './scenario.ts';
 import { realSleep, runScenario } from './scripted.ts';
+import { workProductFor } from './work-product.ts';
 
 export const AGENT_NAME = 'deflow-mock-agent';
 export const AGENT_VERSION = '0.0.0';
@@ -159,6 +160,52 @@ export function createMockAgent(
    */
   let clientCapabilities: acp.ClientCapabilities = {};
 
+  /**
+   * KAR-23.11 — the built-in turn's one write, when its brief declared a scope
+   * to make it in.
+   *
+   * Absolute, resolved against the cwd `session/new` opened the session with,
+   * because that is what ACP's `WriteTextFileRequest` asks for and what a client
+   * that mediates paths has to be given something real to resolve. A relative
+   * path would work against DeFlow — its `fs-service` resolves one against the
+   * node's worktree — and would be a frame no other client is obliged to accept.
+   *
+   * A refusal is reported and never thrown: `session/request_permission` may say
+   * no, and an agent that treated a denial as a crash would turn every
+   * permission spec into a spawn failure. What it must not do is claim the write
+   * happened, so the rejection goes on the wire in the agent's own words.
+   */
+  const writeWorkProduct = async (
+    params: acp.PromptRequest,
+    client: acp.AgentContext,
+  ): Promise<void> => {
+    if (clientCapabilities.fs?.writeTextFile !== true) return;
+    const product = workProductFor(promptText(params.prompt));
+    if (product === null) return;
+
+    const cwd = sessions.get(params.sessionId)?.cwd ?? '';
+    const path = cwd === '' ? product.path : `${cwd.replace(/\/+$/, '')}/${product.path}`;
+    let said: string;
+    try {
+      await client.request('fs/write_text_file', {
+        sessionId: params.sessionId,
+        path,
+        content: product.content,
+      });
+      said = `Wrote ${product.path}.`;
+    } catch (error) {
+      said = `Could not write ${product.path}: ${
+        error instanceof Error ? error.message : String(error)
+      }`;
+    }
+
+    await client.notify('session/update', {
+      sessionId: params.sessionId,
+      update: { sessionUpdate: 'agent_message_chunk', content: { type: 'text', text: said } },
+      _meta: { timestampMs: clock.now() },
+    });
+  };
+
   const agent = acp
     .agent()
     .onRequest('initialize', ({ params }) => {
@@ -229,6 +276,14 @@ export function createMockAgent(
           _meta: { timestampMs: clock.now() },
         });
       }
+
+      // KAR-23.11 — the turn's work product. A node whose brief declares a
+      // write scope has promised the plan it changes files, so the built-in
+      // turn keeps that promise the ordinary way: one `fs/write_text_file`
+      // inside the declared scope, through whatever mediation the client puts
+      // in front of it. See ./work-product.ts for why this is gated on the
+      // brief rather than done unconditionally.
+      await writeWorkProduct(params, client);
       return { stopReason: 'end_turn' };
     })
     .onNotification('session/cancel', ({ params }) => {
