@@ -159,11 +159,28 @@ function runId(input: GeneratorInput): string {
   return `run_${stamp}_${input.hex(6)}`;
 }
 
+/**
+ * KAR-23.11 — a node's declared write scope is a promise, so the two nodes make
+ * different ones.
+ *
+ * `pathScopes.write` is F5.3's positive statement that this node changes files,
+ * and a node that finishes without changing anything inside it is failed rather
+ * than completed. The planner packet's own `plan-rules` brief states the
+ * corollary: *"give a node that only reads, reviews, verifies or returns a
+ * document `pathScopes.write: []`"*. So `implement` declares a scope and writes;
+ * `verify` re-reads the change, declares none, and is never asked for a diff.
+ *
+ * Before this, both nodes declared `write: ['**']` and neither wrote a byte.
+ * That is what made the smoke test a scenario about a node which had produced
+ * nothing — and `permission: 'read'` on the verifier is the same statement made
+ * where it can be enforced rather than only believed.
+ */
 const agentNode = (
   id: string,
   title: string,
   brief: string,
   deps: readonly string[],
+  scope: { readonly permission: string; readonly write: readonly string[] },
 ): Record<string, unknown> => ({
   id,
   title,
@@ -172,8 +189,8 @@ const agentNode = (
   lifecycle: 'active',
   reads: [{ kind: 'spec', section: 'goal' }],
   writes: [],
-  permission: 'worktree',
-  pathScopes: { write: ['**'] },
+  permission: scope.permission,
+  pathScopes: { write: [...scope.write] },
   returns: { schemaId: 'DeFlow.finding.v1', maxTokens: 1500 },
   brief,
   // The agent that proposed the plan, and nothing else.
@@ -210,10 +227,20 @@ const planGraph: Generator = (input) => ({
   createdBy: 'planner',
   createdAt: new Date(input.clock.now()).toISOString(),
   nodes: [
-    agentNode('implement', 'Make the change the task describes', 'Make the change, carefully.', []),
-    agentNode('verify', 'Check the change against the criteria', 'Re-read the change.', [
+    agentNode(
       'implement',
-    ]),
+      'Make the change the task describes',
+      'Make the change, carefully.',
+      [],
+      { permission: 'worktree', write: ['**'] },
+    ),
+    agentNode(
+      'verify',
+      'Check the change against the criteria',
+      'Re-read the change.',
+      ['implement'],
+      { permission: 'read', write: [] },
+    ),
     {
       id: 'review',
       title: 'Check the acceptance criteria',

@@ -87,6 +87,19 @@ suite('EPIC-19-S33 — an operator command, all the way to an executed node', ()
     ).toBeGreaterThanOrEqual(2);
     expect(smoke.completedNodes.length).toBeGreaterThanOrEqual(1);
 
+    // KAR-23.11 — **executed** has to mean the node did something, and this is
+    // the clause that makes it mean that. Until it existed the chain above was
+    // satisfied by a run whose implementation node wrote no file and made no
+    // commit: `node.completed` is a claim, and on 2026-08-24 four nodes made it
+    // over twenty-two minutes having produced nothing. The evidence is the
+    // salvage commit on the node's own branch, read out of the operator's
+    // repository with plain `git` and no DeFlow code in the path.
+    expect(
+      smoke.workProduct,
+      `the run completed ${JSON.stringify(smoke.completedNodes)} and left no file behind in the ` +
+        `repository it ran in — ${ledger}`,
+    ).not.toEqual([]);
+
     // AC2 — agent output on the CLI's own stdout, while the run was still in
     // flight. Sampled by the harness before any terminal event existed, so a
     // renderer that buffered to the end of the run fails here.
