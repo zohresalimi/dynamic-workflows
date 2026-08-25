@@ -49,11 +49,10 @@ import { readToken } from '../api/token.ts';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
 import { openLazyRunsFeed, RUNS_FEED } from '../app/useRunList.ts';
 import GateDecisionCard from '../components/gate/GateDecisionCard.vue';
-import GraphEmptyNote from '../components/graph/GraphEmptyNote.vue';
 import TurnActivityStrip from '../components/output/TurnActivityStrip.vue';
 import RunHeader from '../components/RunHeader.vue';
 import TaskBoard from '../components/TaskBoard.vue';
-import { UiButton, UiCard, UiEmptyState } from '../components/ui/index.ts';
+import { UiButton, UiEmptyState } from '../components/ui/index.ts';
 import { RUN_STATUS_DISPLAY, stateVar } from '../lib/state-palette.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 import { useUiStore } from '../stores/useUiStore.ts';
@@ -333,42 +332,6 @@ const openGate = computed(() =>
   currentRun.value !== null && run.runId === currentRun.value ? run.openGate : null,
 );
 
-/** No plan yet, and the run has stopped to ask a human something. */
-const pendingPlan = computed(() => run.planNodes.length === 0 && openGate.value !== null);
-
-/**
- * No plan yet and nothing being asked — the run is still arriving.
- *
- * `hydratedFromSeq === 0` is the honest reading of "this tab has not folded a
- * hydrate for this run yet", and it is a store ref rather than a connection
- * status because the connection belongs to `PlanGraphView` (one feed per run,
- * `test/one-workspace-surface.test.ts`). A second `useRunFeed()` here to read a
- * status word would be a second subscription, which is the exact thing that
- * guard exists to stop.
- */
-const hydratingPlan = computed(
-  () => currentRun.value !== null && run.planNodes.length === 0 && openGate.value === null,
-);
-
-/**
- * KAR-27.3 AC4 — whether this tab is still *reading* the run, or has read it.
- *
- * It was `hydratedFromSeq === 0`, and that was wrong in a way nothing caught:
- * `hydratedFromSeq` is only ever moved by `scrubTo`, so a live run that nobody
- * scrubbed reported `hydrating` **for ever** — which is how the 2026-08-23
- * report got a plan panel stuck on *"Reading the run's ledger…"* under a run
- * that had been open for ten minutes.
- *
- * `applied > 0` is the honest reading: this tab has folded at least one event
- * for the run on screen, so it is no longer reading the ledger — it is showing
- * what it read. Every run's first event is its `task.submitted`, so the
- * sentence is reachable exactly while the first frame is in flight, which is
- * the one moment it is true.
- */
-const feedStatus = computed(() =>
-  run.runId === currentRun.value && run.applied > 0 ? 'idle' : 'hydrating',
-);
-
 /**
  * KAR-27.3 AC3 — the pre-execution turn this run has in flight, or `null`.
  *
@@ -380,27 +343,18 @@ const liveTurn = computed(() =>
   currentRun.value !== null && run.runId === currentRun.value ? run.liveTurnInFlight : null,
 );
 
-/**
- * KAR-27.3 AC4 — which of the pre-execution states the plan panel should name.
+/*
+ * `planActivity`, `feedStatus`, `pendingPlan`, `hydratingPlan` and `stripped`
+ * used to live here, feeding a `GraphEmptyNote` in the strip that stood in for
+ * the plan panel and a `--pending` modifier that removed the board.
  *
- * Derived from ledger facts and nothing else: a turn in flight names itself,
- * and an open spec gate is the other state a plan-less run is legitimately in.
- * `null` is "none of these", which is when *No plan yet* is the true sentence.
- *
- * The order matters. A gate is open only while nothing is running, but a run
- * that has just answered its gate can carry both for a tick, and the honest
- * answer then is the turn that is actually burning time.
+ * KAR-27.5 put the panel back on screen in that state, and the note inside it
+ * is `PlanGraphView`'s own — mounted on its own `nodes.length === 0`, with its
+ * own copy of the same four states. Deriving them a second time here was only
+ * ever necessary because a *second surface* had to say the same sentences; with
+ * one surface saying them there is nothing for this view to compute, and two
+ * derivations of one fact is how they start to disagree.
  */
-const planActivity = computed<'framing' | 'recon' | 'planner' | 'awaiting-spec-approval' | null>(
-  () => {
-    const turn = liveTurn.value;
-    if (turn !== null) return turn.node;
-    return openGate.value?.node === SPEC_GATE_NODE ? 'awaiting-spec-approval' : null;
-  },
-);
-
-/** Either strip state — the layout with no 3fr/2fr split in it. */
-const stripped = computed(() => pendingPlan.value || hydratingPlan.value);
 
 /** When the run on screen was created, for the header's `started` pair. */
 const startedAt = computed<string | null>(
@@ -409,12 +363,7 @@ const startedAt = computed<string | null>(
 </script>
 
 <template>
-  <div
-    class="workspace"
-    :class="{ 'workspace--pending': stripped }"
-    data-project-workspace
-    :data-project="projectId"
-  >
+  <div class="workspace" data-project-workspace :data-project="projectId">
     <!--
       Everything above the graph is one grid child, so the grid stays the three
       rows it has always been — header block, the graph-and-board row that has
@@ -488,48 +437,6 @@ const startedAt = computed<string | null>(
             requestedSeq: openGate.seq,
           }"
         />
-
-        <!--
-          The strip that stands in for the 3fr/2fr split while there is no plan
-          to draw. A run waiting at its spec gate has no nodes and no tasks,
-          and an empty canvas plus an empty board is two hundred pixels of
-          nothing above the thing the operator is actually here for.
-        -->
-        <UiCard
-          v-if="stripped"
-          variant="inset"
-          class="workspace__strip"
-          data-workspace-pending-plan
-        >
-          <!--
-            AC3 — while a pre-execution turn is running, the strip stops being a
-            sentence about the future and becomes the evidence that something is
-            happening now. It disappears the moment the projection folds a
-            completion off the feed, with no refresh.
-          -->
-          <TurnActivityStrip
-            v-if="liveTurn !== null && currentRun !== null"
-            :run-id="currentRun"
-            :node="liveTurn.node"
-            :attempt="Math.min(liveTurn.turn.failures + 1, liveTurn.turn.maxAttempts)"
-            :max-attempts="liveTurn.turn.maxAttempts"
-            :since-ts="liveTurn.turn.sinceTs"
-          />
-          <span v-else-if="pendingPlan" class="workspace__strip-text">
-            Plan and tasks appear the moment spec-approval passes.
-          </span>
-          <GraphEmptyNote
-            v-else
-            :run-id="currentRun"
-            :status="feedStatus"
-            :activity="planActivity"
-          />
-          <RouterLink
-            class="workspace__strip-link"
-            :to="{ name: 'plan-evolution', params: { projectId, runId: currentRun } }"
-            >Evolution</RouterLink
-          >
-        </UiCard>
       </template>
     </div>
 
@@ -547,15 +454,41 @@ const startedAt = computed<string | null>(
         (`test/one-workspace-surface.test.ts` is the guard that says there is
         only ever one of each).
       -->
-      <section
-        class="workspace__graph"
-        :class="{ 'workspace__graph--tucked': stripped }"
-        aria-label="The run's plan graph"
-      >
+      <section class="workspace__graph" data-workspace-plan-panel aria-label="The run's plan graph">
+        <!--
+          KAR-27.5 AC2 — the panel's header line, and the one place the live
+          strip belongs.
+
+          It used to be a card of its own that *replaced* this panel and the
+          board beside it while a run had no plan. The intent was to spend no
+          height on an empty split; what it actually produced, watched on a real
+          framing run on 2026-08-25, was a one-line strip over several hundred
+          pixels of nothing, for the minutes a framing turn takes. The canvas
+          below says what it is waiting for — `GraphEmptyNote` names framing,
+          the spec gate and the planner from ledger facts — and it can only say
+          it from inside a panel somebody can see.
+        -->
+        <header class="workspace__graph-head">
+          <TurnActivityStrip
+            v-if="liveTurn !== null && currentRun !== null"
+            :run-id="currentRun"
+            :node="liveTurn.node"
+            :attempt="Math.min(liveTurn.turn.failures + 1, liveTurn.turn.maxAttempts)"
+            :max-attempts="liveTurn.turn.maxAttempts"
+            :since-ts="liveTurn.turn.sinceTs"
+          />
+          <h2 v-else class="workspace__graph-title">Plan graph</h2>
+          <RouterLink
+            class="workspace__graph-link"
+            :to="{ name: 'plan-evolution', params: { projectId, runId: currentRun } }"
+            >Evolution</RouterLink
+          >
+        </header>
+
         <PlanGraphView :run-id="currentRun" />
       </section>
 
-      <aside v-if="!stripped" class="workspace__board">
+      <aside class="workspace__board">
         <TaskBoard
           :bodies="rows"
           :selected="ui.selectedNodeId"
@@ -685,17 +618,17 @@ const startedAt = computed<string | null>(
 }
 
 /*
- * The pending layout: one column, and the middle row sized by its content
- * rather than by a graph that has no nodes in it. The modifier is what
- * switches between "there is a plan to look at" and "there is not", so the
- * two grids are stated side by side rather than one being a pile of overrides
- * on the other.
+ * There is one grid, and KAR-27.5 is why there is no longer a second.
+ *
+ * A `--pending` modifier used to switch this to one column and three `auto`
+ * rows while a run had no plan. Three `auto` rows inside a `height: 100%` grid
+ * are stretched *equally* by `align-content`'s default — so the free space went
+ * into every track rather than into the one that can use it, and the history
+ * table ended up floating in the middle of the page with a void above it and
+ * another below. The `minmax(16rem, 1fr)` middle row here is what absorbs the
+ * height instead, in every run state, which is also what puts the last row on
+ * the bottom edge.
  */
-.workspace--pending {
-  grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: auto auto auto;
-}
-
 .workspace__top,
 .workspace__history {
   grid-column: 1 / -1;
@@ -733,49 +666,49 @@ const startedAt = computed<string | null>(
   max-width: 40rem;
 }
 
-/* One slim row, never a panel: it is a sentence about something that has not
-   happened yet, and giving it panel height would be giving it panel weight. */
-.workspace__strip {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 12px; /* geometry — sentence-to-link gutter */
-  min-height: 56px; /* geometry — the strip's own height */
-  box-sizing: border-box;
-}
-
-.workspace__strip-text {
-  font-size: var(--text-sm);
-  color: var(--ink-muted);
-}
-
-.workspace__strip-link {
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-  margin-left: auto;
-}
-
 /* A bordered panel with no shadow (system law 1) — the raised treatment on
-   this page belongs to the gate card alone. */
+   this page belongs to the gate card alone.
+
+   Two rows: the header line, and the canvas taking whatever is left.
+   `minmax(0, 1fr)` rather than `1fr` because the renderer inside measures its
+   own box, and an `auto`-floored track would let it grow the panel instead of
+   fitting inside it. */
 .workspace__graph {
   min-height: 0;
   position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   border: 1px solid var(--edge-strong);
   border-radius: var(--radius-xl);
   overflow: hidden;
   background: var(--surface);
 }
 
-/*
- * Collapsed, never unmounted — see the template's comment. Zero height rather
- * than `display: none` so the renderer inside keeps a box to observe and
- * re-fits when the plan arrives and the panel opens back up.
- */
-.workspace__graph--tucked {
-  height: 0;
-  min-height: 0;
-  border: none;
-  overflow: hidden;
+/* One slim line, never a band of its own: the panel's own title bar, carrying
+   the live strip while a pre-execution turn runs and the panel's name when one
+   is not. */
+.workspace__graph-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px; /* geometry — header-to-link gutter */
+  min-height: 40px; /* geometry — the header's own height */
+  padding: 0 12px; /* geometry — the panel's own inset */
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--edge);
+}
+
+.workspace__graph-title {
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--ink);
+  margin: 0;
+}
+
+.workspace__graph-link {
+  font-size: var(--text-xs);
+  color: var(--ink-faint);
+  margin-left: auto;
 }
 
 .workspace__board {
