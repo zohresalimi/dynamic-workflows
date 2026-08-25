@@ -47,9 +47,11 @@ only processes it can positively attribute to DeFlow, and never itself.
 | KAR-27.3 | A run that is framing looks alive: status, heartbeat and live activity (added) | M | — |
 | KAR-27.4 | The live-turn strip's facts run together: it styles itself with tokens the system does not have (added) | S | KAR-27.3 |
 | KAR-27.5 | While a run is framing, the workflows screen keeps its panels (added) | M | KAR-27.3 |
-| KAR-27.6 | Cancel actually ends the run: the child dies and the run leaves `cancelling` (added) | M | — |
+| KAR-27.6 | A cooperative cancel stops parking silently: bounded, reported, and it names the way out (added) | M | — |
 | KAR-27.7 | Pause, resume and stop, from the run surface (added) | M | KAR-27.6 |
 | KAR-27.8 | `daemon.json` does not outlive its daemon (added) | S | — |
+| KAR-27.9 | The cooperative rung exists outside the test suite (added) | M | KAR-27.6 |
+| KAR-27.10 | A daemon that exits does not orphan the processes it spawned (added) | S | — |
 
 ### KAR-27.1 — Pause and resume a run, from the UI and the CLI
 
@@ -245,40 +247,55 @@ gate must render both panels and must not render a zero-height graph section; th
 assertion is that the pending and planned states resolve to the same track structure. No daemon
 call changes, no store changes, no new projection. Model: opus for implementation; sonnet verifies.
 
-### KAR-27.6 — Cancel actually ends the run (added 2026-08-25)
+### KAR-27.6 — A cooperative cancel stops parking silently (added 2026-08-25)
 
-**As** an operator who has asked a run to stop, **I want** it to stop, **so that** "cancel" is a
-control rather than a request the machine may decline.
+**As** an operator who has cancelled a run, **I want** to be told when the agent is not answering,
+**so that** `cancelling` is a state I can act on rather than a place runs go to stay.
 
-**Why now.** Observed twice on 2026-08-25, an hour apart, on two different runs. `POST
-/api/runs/:id/cancel` appended its event and answered `cancelling`; the run then sat in `cancelling`
-indefinitely. The agent child — a real `claude` process doing real work against a real repository —
-**was not signalled**, survived the cancel, survived the daemon being killed, reparented to PID 1 and
-kept running until it was killed by hand. A stop button on top of this behaviour would be a lie in
-the shape of a control, which is why this story precedes KAR-27.7 rather than shipping beside it.
+**Why now, and the correction that produced this story.** Observed twice on 2026-08-25, an hour
+apart. `POST /api/runs/:id/cancel` answered `cancelling`; both runs then sat there indefinitely, and
+the agent child — a real `claude` process working against a real repository — survived the cancel,
+survived the daemon being killed, reparented to PID 1, and ran until it was killed by hand.
 
-**This is not the pause of KAR-27.1.** Pause is deliberately a scheduling state that never signals a
-child, and that decision stands (see the scope decisions below). Cancel is the opposite: the operator
-has said the run is over, and the work must actually end.
+The first reading of that was "cancel does not signal the child", and it was **wrong**. The request
+carried no `mode`, so it took the default — `cooperative` — and cooperative is *designed* not to
+signal. `drive.ts` says so on the record:
+
+> **Cooperative is never promoted.** A cooperative cancel whose agent has not answered leaves live
+> processes behind, and this loop leaves them alone: an automatic escalation would make `--force`
+> decorative and would truncate the transcript the operator cancelled the run in order to read
+> (EPIC-19-S38).
+
+That decision stands. `forceful` runs the real ladder and would have ended both runs.
+
+**What is genuinely broken is narrower and worse.** Cooperative's *first rung* is asking the agent
+to stop over the protocol, through `ports.protocolCancel`. That port is supplied in exactly three
+places in this repository, and **all three are tests** (`kill-switch.test.ts` ×2,
+`cancel-cooperative.test.ts`). Production wires it nowhere: `drive.ts` builds its kill runner with
+`{db, clock, epoch, mode, by}` and no `protocolCancel` at all. So on a real run the default cancel
+asks nobody anything, `finishCancels` reaches `if (live.length > 0) continue`, and the run parks —
+with no bound, no report, and nothing on any surface saying that `--force` is the way out.
+
+**This story does not add escalation.** It makes the wait honest and bounded. KAR-27.9 is where the
+missing rung gets built; this is what makes the gap legible in the meantime.
 
 **Acceptance criteria**
 
-1. A cancelled run's in-flight child process tree is terminated: SIGTERM, a bounded grace, then
-   SIGKILL. No descendant survives the cancel, and none is left reparented to PID 1.
-2. The kill verifies the process start time still matches the one recorded before signalling, so a
-   recycled pid is never killed — the guard `killTree` already implements, reused rather than
-   re-derived.
-3. The run reaches a terminal state. `cancelling` is a state a run passes *through*, with a bounded
-   time in it, after which it is `aborted` with the outcome recorded — never an indefinite resting
-   place.
-4. A cancel that cannot fully terminate something reports **what** survived, with pid and reason, in
-   the ledger and to the caller. Failing loudly beats a terminal state that is not true.
-5. Killing the daemon does not orphan a run's children: a daemon shutting down terminates the trees
-   it spawned, and anything it cannot terminate is recorded before it exits.
-6. `deflow cancel` and the API answer identically, because they are the same path.
+1. A cooperative cancel that has not completed within a stated window records that it is waiting —
+   the run's own state carries "cancelling · the agent has not answered since &lt;instant&gt;" rather
+   than a bare `cancelling`, and the window is a named constant, not a magic number.
+2. The waiting state names the way out: every surface that shows it also names forceful cancel
+   (`deflow cancel <runId> --force`, or the equivalent control) as the operator's next move.
+3. Nothing is escalated automatically. A cooperative cancel never becomes a forceful one, and the
+   live processes are left alone — EPIC-19-S38's decision is preserved, and a test asserts it.
+4. The processes still running under a parked cancel are **named**: pid and node, in the ledger and
+   on the surface, so "what is still running" is answerable without `ps`.
+5. A forceful cancel is unchanged, and a test pins that it still ends the run and empties the group.
+6. `deflow status` and the API report the same waiting state in the same words.
 
-**Execution plan.** TDD. Red first with a fake agent that ignores SIGTERM: cancel must escalate,
-must report, and the run must not remain `cancelling`. Then the daemon-shutdown case. Model: opus
+**Execution plan.** TDD. Red first at the projection: a seeded ledger with a cooperative
+`run.cancel.requested`, no completion and a live process, past the window, must report waiting-with-
+survivors rather than `cancelling`. Then the surfaces. No change to either ladder. Model: opus
 implements; sonnet verifies.
 
 ### KAR-27.7 — Pause, resume and stop, from the run surface (added 2026-08-25)
@@ -291,14 +308,20 @@ run does not require `curl` and a bearer token.
 2026-08-25 the owner asked for the control three times in one session, and every stop performed that
 day was performed with `curl`.
 
-**Scope.** The controls and the wiring, over the endpoints that exist and the cancel KAR-27.6 makes
-honest. Drive-level pause semantics — deferred wakes, held retries, surviving a restart — remain
-KAR-27.1's and are not smuggled in here.
+**Scope.** The controls and the wiring, over the endpoints that exist. Drive-level pause semantics —
+deferred wakes, held retries, surviving a restart — remain KAR-27.1's and are not smuggled in here.
+
+**The stop control sends `forceful`, and says so.** A button labelled Stop that took the default
+would take the cooperative ladder, whose first rung is unbuilt (KAR-27.6) — so it would appear to do
+nothing, which is the worst behaviour a stop control can have. The button is the forceful ladder, its
+confirmation says the transcript may be truncated, and the cooperative ladder stays available where
+an operator can choose it deliberately.
 
 **Acceptance criteria**
 
 1. The run surface shows a pause control on a running run, a resume control on a paused one, and a
-   stop control on any run that is not already terminal. Each calls the endpoint that exists.
+   stop control on any run that is not already terminal. Each calls the endpoint that exists, and
+   stop sends `mode: "forceful"` explicitly rather than taking the default.
 2. Each control reports what happened: the run's state changes on screen from the ledger, and a
    refusal (already concluded, already cancelled) is shown as the message the daemon gave, not
    swallowed.
@@ -335,6 +358,62 @@ a rare crash case, it is routine.
 
 **Execution plan.** TDD. Red first: write a `daemon.json` naming a pid that is not a daemon, and
 assert every reader says no daemon. Model: opus.
+
+### KAR-27.9 — The cooperative rung exists outside the test suite (added 2026-08-25)
+
+**As** an operator who cancelled a run in order to keep its transcript, **I want** the agent to
+actually be asked to stop, **so that** the gentle ladder is a ladder rather than a wait.
+
+**Why now.** `cancel.ts`'s rung 1 — *"the only rung that ends with a transcript somebody can read"* —
+is reached only when `ports.protocolCancel` is supplied, and production supplies it nowhere. The
+whole cooperative mode therefore has no implementation outside three integration tests, which is why
+it can only ever park (KAR-27.6). This story builds the rung; KAR-27.6 makes its absence legible
+until it exists, and removes that legibility copy when it does.
+
+**The open question this story must answer first.** Whether a cooperative stop can even be delivered
+to the process this daemon spawns. The ACP transport has a protocol to carry it; a `claude -p` child
+on the shim route may have no channel at all. If it does not, the honest answer is that cooperative
+is unavailable *for that route* and the surfaces say so — not a rung that silently does nothing.
+
+**Acceptance criteria**
+
+1. `protocolCancel` is supplied in production for every route that has a channel to carry it, and a
+   cooperative cancel on such a run reaches the agent, ends with a flushed transcript, and completes
+   without any signal being sent.
+2. For a route with **no** such channel, cooperative cancel is refused at the point of request with a
+   message naming forceful as the available ladder — never accepted into a wait that cannot end.
+3. The refusal and the capability are one fact, read from the route, so the CLI and the API cannot
+   disagree about which ladders a run supports.
+4. The transcript survives: a cooperatively cancelled run's output is readable afterwards, which is
+   the entire reason this ladder exists.
+5. KAR-27.6's waiting copy is removed on the paths where it can no longer occur, rather than left to
+   describe a state that has become unreachable.
+
+**Execution plan.** Spike first — establish whether each route can carry a cooperative stop, and
+record the answer — then TDD the wiring per route. Model: opus.
+
+### KAR-27.10 — A daemon that exits does not orphan the processes it spawned (added 2026-08-25)
+
+**As** an operator, **I want** the daemon to take its children with it, **so that** stopping DeFlow
+does not leave agents running against my repository.
+
+**Why now.** Observed 2026-08-25: killing the daemon left its agent child alive and reparented to
+PID 1, still working. Separately, one gate run left four `deflow up` daemons orphaned under `_npx`
+paths. The reparented agent is the sharper case — it was still writing to a repository nobody was
+watching.
+
+**Acceptance criteria**
+
+1. A daemon asked to stop terminates the process trees it spawned before it exits, using the ladder
+   and the pid-reuse guard that already exist rather than a second implementation.
+2. Anything it cannot terminate is recorded — pid, node, reason — before the process exits, so the
+   next daemon and the operator both know what survived.
+3. A daemon that cannot run its shutdown at all (SIGKILL) is covered by the next boot: recovery
+   attributes and reports the survivors it finds, which is the seam KAR-27.2's sweep already owns.
+4. Nothing is killed that cannot be positively attributed to this daemon's own runs.
+
+**Execution plan.** TDD with a fake agent that outlives its parent: stop the daemon, assert the child
+is gone and the record exists. Model: opus.
 
 ## Scope decisions recorded rather than taken quietly
 
