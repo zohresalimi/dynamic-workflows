@@ -30,6 +30,7 @@
  *
  * Verifies: EPIC-19-S7 · KAR-19.1 AC6
  */
+import { unansweredCancelClause } from './cooperative-cancel.ts';
 import { inFlightPreExecution, type PreExecutionTurnState } from './pre-execution-turn.ts';
 import type { RunState, RunStatus } from './run-state.ts';
 
@@ -102,10 +103,34 @@ function runningLabel(node: string, turn: PreExecutionTurnState): string {
   );
 }
 
+/**
+ * KAR-27.6 AC1 — *"the run's own state carries `cancelling · the agent has not
+ * answered since <instant>` rather than a bare `cancelling`"*.
+ *
+ * Composed here rather than spelled in `RUN_STATUS_LABELS` because it is not a
+ * status: it is `cancelling` plus a fact about how long it has been that, the
+ * same shape as the `— stalled` suffix below and for the same reason. The clause
+ * itself comes from `./cooperative-cancel.ts`, which is the one module allowed
+ * to spell it (`test/one-cancel-remedy.test.ts`).
+ *
+ * A bare `cancelling` is still the honest answer inside the window, and for a
+ * forceful cancel at any point — a forceful cancel does not park; it runs the
+ * ladder and reports what outlived it.
+ */
+function cancellingLabel(state: RunState): string {
+  const unanswered = state.cancel?.unanswered;
+  if (unanswered === undefined || unanswered === null) return RUN_STATUS_LABELS.cancelling;
+  return `${RUN_STATUS_LABELS.cancelling} · ${unansweredCancelClause(unanswered.sinceTs)}`;
+}
+
 /** The status string every surface prints for `state`. */
 export function runStatusLabel(state: RunState): string {
   const live = FRAMEABLE.has(state.status) ? inFlightPreExecution(state.preExecution) : null;
   const label =
-    live === null ? RUN_STATUS_LABELS[state.status] : runningLabel(live.node, live.turn);
+    live !== null
+      ? runningLabel(live.node, live.turn)
+      : state.status === 'cancelling'
+        ? cancellingLabel(state)
+        : RUN_STATUS_LABELS[state.status];
   return stalled(state) ? `${label} — stalled` : label;
 }

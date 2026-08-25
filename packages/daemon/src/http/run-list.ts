@@ -26,8 +26,21 @@
  * currency are two substances, and an unmeasurable provider contributes `null`
  * rather than `0`.
  */
-import type { BudgetRollup, PendingGate, RunId, RunState, RunStatus } from '@DeFlow/core';
-import { initialRunState, pendingGate, runStatusLabel, toSingleLine } from '@DeFlow/core';
+import type {
+  BudgetRollup,
+  CancelWaiting,
+  PendingGate,
+  RunId,
+  RunState,
+  RunStatus,
+} from '@DeFlow/core';
+import {
+  cancelWaiting,
+  initialRunState,
+  pendingGate,
+  runStatusLabel,
+  toSingleLine,
+} from '@DeFlow/core';
 import type { LedgerView } from './ledger-view.ts';
 
 /** One row of the list. AC4's seven fields, plus the rendered `label`. */
@@ -59,6 +72,17 @@ export interface RunListEntry {
    * name different gates for one run at one head sequence.
    */
   readonly gate: PendingGate | null;
+  /**
+   * KAR-27.6 AC2, AC4 — for a run whose cooperative cancel has gone unanswered,
+   * what is still running and how to end it; `null` for every other run.
+   *
+   * On the row for the same reason `gate` is: the list is where an operator
+   * scans for the run that wants them, and `cancelling` with no way out is the
+   * same silence in a different font. Produced by `cancelWaiting` and by nothing
+   * else, so this row, the terminal and `deflow status` cannot name different
+   * survivors or different remedies for one run.
+   */
+  readonly cancelWaiting: CancelWaiting | null;
 }
 
 export interface RunListPage {
@@ -148,6 +172,7 @@ export function runEntry(
     planVersion: state.planVersion,
     cost: state.budget,
     gate: pendingGate(state),
+    cancelWaiting: cancelWaiting(state, runId),
   };
 }
 

@@ -41,10 +41,16 @@ import type {
   NodeId,
   Random,
   RunId,
+  RunState,
   StallReport,
 } from '@DeFlow/core';
-import { DEFAULT_NO_PROGRESS_POLICY, EVENT_CURRENT_VERSIONS, noProgress } from '@DeFlow/core';
-import type { AppendOptions, NodeWakeRow } from '@DeFlow/ledger';
+import {
+  COOPERATIVE_CANCEL_UNANSWERED_MS,
+  DEFAULT_NO_PROGRESS_POLICY,
+  EVENT_CURRENT_VERSIONS,
+  noProgress,
+} from '@DeFlow/core';
+import type { AppendOptions, NodeWakeRow, ProcessRow } from '@DeFlow/ledger';
 import {
   appendEvents,
   clearWake,
@@ -578,7 +584,15 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
         const live = readProcesses(ports.db).filter(
           (row) => row.runId === runId && row.state === 'live',
         );
-        if (live.length > 0) continue;
+        if (live.length > 0) {
+          // KAR-27.6 AC1, AC4 — the line above is where a cooperative cancel
+          // parks, and before this story it parked *silently*: no bound, no
+          // report, and nothing on any surface naming `--force` as the way out.
+          // The wait is not shortened here and nothing is signalled; it is
+          // written down.
+          if (mode === 'cooperative') reportUnansweredCancel(runId, state, live, now);
+          continue;
+        }
 
         completeCancel({ db: ports.db, runId, epoch: ports.epoch, ts: now });
         driver.info({ runId, mode }, `the cancel of run ${runId} is complete`);
@@ -589,6 +603,84 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
     }
 
     return finished;
+  }
+
+  /**
+   * KAR-27.6 AC1, AC2, AC4 — a cooperative cancel that has gone unanswered past
+   * `COOPERATIVE_CANCEL_UNANSWERED_MS`, said out loud, with the processes still
+   * running under it named by pid and node.
+   *
+   * **This escalates nothing and must never be made to.** The kill runner is not
+   * reachable from here, no signal is sent, and the run's `cancel.mode` is left
+   * exactly as the operator asked for it: an automatic promotion would make
+   * `--force` decorative and would truncate the transcript the operator
+   * cancelled the run in order to read (EPIC-19-S38). What this produces is a
+   * sentence, and `packages/core/src/cooperative-cancel.ts` owns the words.
+   *
+   * **Reported when the answer changes, not once and not every tick.** Once and
+   * never again would leave a surface naming a pid that exited an hour ago;
+   * every tick would write a row a second for as long as nobody looks. The pid
+   * set already on the projection is the comparison, so a parked cancel whose
+   * survivors are unchanged costs one fold and no write.
+   *
+   * The since-instant is the `ts` of the request itself rather than this tick's
+   * `now`, because the fact the operator needs is how long *their* cancel has
+   * gone unanswered — and reading it off the event means a second daemon life
+   * reports the same instant the first one did.
+   */
+  function reportUnansweredCancel(
+    runId: RunId,
+    state: RunState,
+    live: readonly ProcessRow[],
+    now: number,
+  ): void {
+    const requestedSeq = state.cancel?.requestedSeq;
+    if (requestedSeq === undefined) return;
+    const requestedTs = readEventTs(ports.db, requestedSeq);
+    if (requestedTs === null) return;
+
+    const waitedMs = now - requestedTs;
+    if (waitedMs < COOPERATIVE_CANCEL_UNANSWERED_MS) return;
+
+    const rows = live.map((row) => ({
+      node: row.nodeId as NodeId,
+      attempt: row.attempt,
+      pid: row.pid,
+      pgid: row.pgid,
+    }));
+    const reported = state.cancel?.unanswered ?? null;
+    if (
+      reported !== null &&
+      reported.survivors.length === rows.length &&
+      reported.survivors.every((one, index) => {
+        const row = rows[index];
+        return row !== undefined && one.node === row.node && one.pid === row.pid;
+      })
+    ) {
+      return;
+    }
+
+    appendEvents(
+      ports.db,
+      [
+        {
+          runId,
+          ts: now,
+          kind: 'run.cancel.unanswered',
+          v: EVENT_CURRENT_VERSIONS['run.cancel.unanswered'],
+          epoch: ports.epoch,
+          payload: { mode: 'cooperative', requestedTs, waitedMs, live: rows },
+        },
+      ],
+      appendOptions,
+    );
+
+    driver.warn(
+      { runId, waitedMs, live: rows.map((row) => row.pid) },
+      `run ${runId}'s cooperative cancel has gone unanswered for ` +
+        `${Math.round(waitedMs / 1000)}s; ${String(rows.length)} process(es) are still running and ` +
+        'nothing will be signalled without a forceful cancel',
+    );
   }
 
   /**

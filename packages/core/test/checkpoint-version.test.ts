@@ -51,7 +51,11 @@ suite('the comment above it states the obligation', () => {
 
   it('is a real comment and not the whole file', () => {
     expect(comment.length).toBeGreaterThan(80);
-    expect(comment.length).toBeLessThan(1400);
+    // The ceiling exists to stop the comment becoming the file, not to cap the
+    // bump log: that list grows by one short clause every time the shape
+    // changes, which is the whole point of keeping it here. Raised from 1400
+    // when bump 18 (`CancelState.unanswered`, KAR-27.6) landed.
+    expect(comment.length).toBeLessThan(1700);
   });
 });
 

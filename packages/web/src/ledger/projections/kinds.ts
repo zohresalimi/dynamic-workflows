@@ -82,6 +82,12 @@ export const EVENT_KIND_OWNERS = {
   'run.paused': [],
   'run.resumed': [],
   'run.cancel.requested': [],
+  // KAR-27.6 — the report that a cooperative cancel has gone unanswered. The
+  // run list and the run view read the *projection* it folds into
+  // (`cancelWaiting`), served on the row by `GET /api/runs`, rather than the
+  // frame: the `?runs=*` topic carries four lifecycle kinds and this is not one
+  // of them, so no view projects it directly.
+  'run.cancel.unanswered': [],
   'run.completed': ['liveTurn'],
   'run.aborted': ['liveTurn'],
   // KAR-17.8 AC7 — a marker on the Gantt naming the idle time and the nodes

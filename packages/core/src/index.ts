@@ -241,6 +241,15 @@ export {
   TokenCountMethodSchema,
   TokenCountSchema,
 } from './context-packet.ts';
+// KAR-27.6 — the one place a parked cooperative cancel is described: the window
+// it is bounded by, what is still running under it, and the way out.
+export type { CancelSurvivor, CancelWaiting } from './cooperative-cancel.ts';
+export {
+  COOPERATIVE_CANCEL_UNANSWERED_MS,
+  cancelWaiting,
+  forcefulCancelCommand,
+  unansweredCancelClause,
+} from './cooperative-cancel.ts';
 // KAR-14.3 — the pre-flight estimator: what a plan, or a patch, is about to
 // cost, with the method, the calibration factor and the price-table version on
 // every figure — and `null`, never `0`, for anything it cannot price.

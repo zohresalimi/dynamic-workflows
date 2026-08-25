@@ -297,6 +297,41 @@ export const RunCancelRequestedSchema = z.strictObject({
   mode: z.enum(CANCEL_MODES),
 });
 
+/**
+ * KAR-27.6 AC1, AC4 — a cooperative cancel that has not been answered within
+ * `COOPERATIVE_CANCEL_UNANSWERED_MS`, said out loud.
+ *
+ * An event rather than a log line, for exactly the reason `run.kill_failed` is
+ * one: the run's own history has to be able to say that it stopped short because
+ * something out there never answered, and an operator who comes back to a parked
+ * cancel after the daemon that observed it has gone needs the pids to look at.
+ *
+ * **It records a wait; it never authorises ending one.** `mode` is a literal
+ * rather than the open enum because a forceful cancel does not park here — it
+ * runs the ladder and reports `run.kill_failed` if the ladder did not take — and
+ * because a reader must not be able to construe this event as a promotion
+ * (EPIC-19-S38). `live` is what was still running when the report was made,
+ * which is AC4's *"named by pid and node, without recourse to `ps`"*.
+ */
+export const RunCancelUnansweredSchema = z.strictObject({
+  mode: z.literal('cooperative'),
+  /** The `ts` of the `run.cancel.requested` this is reporting on — the instant
+   * that has gone unanswered, and the one every surface renders. */
+  requestedTs: nonNegativeInt,
+  /** How long the loop waited before saying so, on its injected `Clock`. */
+  waitedMs: nonNegativeInt,
+  live: z.array(
+    z.strictObject({
+      node: NodeIdSchema,
+      attempt,
+      /** The process still running — the thing an operator goes and looks at. */
+      pid: z.number().int().positive(),
+      /** The group it leads, which `--force` would signal. Never signalled here. */
+      pgid: z.number().int().positive(),
+    }),
+  ),
+});
+
 export const RunEndedSchema = z.strictObject({
   outcome: z.enum(RUN_OUTCOMES),
   criteriaSatisfied: z.array(CriterionIdSchema),
@@ -2178,6 +2213,7 @@ export const EVENT_SCHEMAS = {
   'run.paused': { v: 1, payload: RunPauseToggledSchema },
   'run.resumed': { v: 1, payload: RunPauseToggledSchema },
   'run.cancel.requested': { v: 1, payload: RunCancelRequestedSchema },
+  'run.cancel.unanswered': { v: 1, payload: RunCancelUnansweredSchema },
   'run.completed': { v: 1, payload: RunEndedSchema },
   'run.aborted': { v: 1, payload: RunEndedSchema },
   'run.stalled': { v: 1, payload: RunStalledSchema },

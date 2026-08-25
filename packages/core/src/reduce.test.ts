@@ -213,13 +213,16 @@ suite('KAR-06.7 — the cancel request is reduced, not merely observed', () => {
     // The mode has to survive into the projection or `decide()` cannot tell a
     // cooperative ladder from a forceful one after a restart — which is the
     // whole reason cancellation is an event rather than a call.
-    expect(state.cancel).toEqual({ mode: 'forceful', requestedSeq: 9 });
+    expect(state.cancel).toEqual({ mode: 'forceful', requestedSeq: 9, unanswered: null });
   });
 
   it('a cooperative request is a different projection, not a different code path', () => {
     expect(fold([started(1), cancelRequested(9, 'cooperative')]).cancel).toEqual({
       mode: 'cooperative',
       requestedSeq: 9,
+      // KAR-27.6 — a cancel that has only just been asked for has not gone
+      // unanswered yet, and the loop is the only thing that may say it has.
+      unanswered: null,
     });
   });
 
@@ -230,7 +233,7 @@ suite('KAR-06.7 — the cancel request is reduced, not merely observed', () => {
       cancelRequested(12, 'forceful'),
     ]);
 
-    expect(state.cancel).toEqual({ mode: 'forceful', requestedSeq: 12 });
+    expect(state.cancel).toEqual({ mode: 'forceful', requestedSeq: 12, unanswered: null });
   });
 
   it('is idempotent: restating the same request changes nothing', () => {

@@ -55,6 +55,7 @@ import type {
 import {
   acceptanceBoard,
   CANCEL_MODES,
+  cancelWaiting,
   INTERJECTION_MODES,
   initialNodeState,
   mintRunId,
@@ -1346,6 +1347,12 @@ export const api = new Hono()
     // `pendingGate` is the one reader of it — the terminal, `deflow status` and
     // the run list all ask the same function.
     const gate = pendingGate(state);
+    // KAR-27.6 AC2, AC6 — and, for a run whose cooperative cancel has gone
+    // unanswered, what is still running and how to end it. The fifth sibling of
+    // the four above and for the same reason: it is not run state, it is a
+    // rendering of one, and `cancelWaiting` is its one producer — so this body
+    // and `deflow status` name the same survivors and the same way out.
+    const waiting = cancelWaiting(state, runId);
     // KAR-22.1 AC7 — and which project it belongs to, read off the run's own
     // `task.submitted` rather than from the `project` table: a project that has
     // been removed cannot make a run forget where it came from, and a run from
@@ -1365,6 +1372,7 @@ export const api = new Hono()
         ...(failure === null ? {} : { failure }),
         ...(provider === null ? {} : { provider }),
         ...(gate === null ? {} : { gate }),
+        ...(waiting === null ? {} : { cancelWaiting: waiting }),
       },
       200,
     );

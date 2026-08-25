@@ -52,7 +52,24 @@ function code(path: string): string {
  * four-digit literals can tell the two apart, while a constant with `retry`,
  * `backoff` or `_MS` in its name is a wait this file decided on.
  */
-const OWN_DURATION = /\b(?:[A-Z][A-Z0-9_]*_MS|[A-Za-z_]*(?:RETRY|BACKOFF|DELAY)[A-Za-z0-9_]*)\b/i;
+const OWN_DURATION = /\b(?:[A-Z][A-Z0-9_]*_MS|[A-Za-z_]*(?:RETRY|BACKOFF|DELAY)[A-Za-z0-9_]*)\b/gi;
+
+/**
+ * Durations the dispatch may *name* because they are provably not an attempt
+ * policy — declared in `@DeFlow/core`, imported here, and about something other
+ * than when to try again.
+ *
+ * A named exemption rather than a weakened pattern, in the same spirit as
+ * `packages/daemon/src/retry.ts` being excluded from `DISPATCH` above: the rule
+ * is worth nothing if it can be routed around by renaming, so what is allowed is
+ * written down one constant at a time.
+ *
+ * `COOPERATIVE_CANCEL_UNANSWERED_MS` (KAR-27.6) is how long a cooperative cancel
+ * may go unanswered before the run *says so*. It schedules nothing and retries
+ * nothing — cooperative is never promoted (EPIC-19-S38) — and the drive's only
+ * use of it is a comparison before appending a `run.cancel.unanswered`.
+ */
+const NOT_A_RETRY_POLICY: ReadonlySet<string> = new Set(['COOPERATIVE_CANCEL_UNANSWERED_MS']);
 
 /** A ceiling of its own: a comparison against a count of attempts or tries. */
 const OWN_CEILING = /\b(?:max|MAX)[_A-Za-z]*(?:Attempts|ATTEMPTS|Retries|RETRIES|Tries|TRIES)\b/;
@@ -87,8 +104,10 @@ suite('AC2 — one retry policy, and it is the node’s own', () => {
 
   it('has no backoff constant used as an attempt policy in the dispatch', () => {
     for (const path of DISPATCH) {
-      const found = OWN_DURATION.exec(code(path));
-      expect(found?.[0] ?? null, `${path} spells a duration constant`).toBeNull();
+      const found = [...code(path).matchAll(OWN_DURATION)]
+        .map((match) => match[0])
+        .filter((name) => !NOT_A_RETRY_POLICY.has(name));
+      expect(found[0] ?? null, `${path} spells a duration constant`).toBeNull();
     }
   });
 

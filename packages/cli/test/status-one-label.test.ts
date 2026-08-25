@@ -38,6 +38,9 @@ const running: DaemonStatus = {
       // KAR-19.12 AC5 — this run is waiting on nobody, which is what keeps the
       // assertion below about the *label* rather than about a gate line.
       gate: null,
+      // KAR-27.6 — and nobody cancelled it, for the same reason: a parked
+      // cancel adds a survivors clause, and this suite is about the label.
+      cancelWaiting: null,
     },
   ],
   ledgerError: null,
