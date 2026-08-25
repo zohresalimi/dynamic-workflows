@@ -585,31 +585,100 @@ suite('the run header carries the facts the topbar used to squeeze in', () => {
   });
 });
 
-suite('a run with no plan yet gets a strip, not an empty split', () => {
-  it('says what is coming, keeps the canvas mounted and draws no board', async () => {
+/**
+ * KAR-27.5 AC1, AC3, AC5 — a run with no plan keeps its panels.
+ *
+ * This suite used to assert the opposite: that the board was `null` and the
+ * canvas collapsed. That was KAR-24.7's reading of "no 3fr/2fr split while
+ * there is nothing to split", and on 2026-08-25 an operator watched what it
+ * actually produces — a one-line strip over a void, for the several minutes a
+ * framing turn takes, with the history table floating in the middle of the
+ * page. The invariant that decision was protecting is the *feed*, not the
+ * hiding: the canvas must stay mounted. It still does, and the panel around it
+ * is now on screen where an operator can read what it is waiting for.
+ *
+ * Verifies: EPIC-27-S24, EPIC-27-S26 · KAR-27.5 AC1, AC3, AC5
+ */
+suite('EPIC-27-S24 — a run with no plan keeps both panels', () => {
+  it('draws the plan panel and the tasks panel, neither of them collapsed', async () => {
     // Mounted and left alone: no events are pushed, so the run has no plan and
     // no gate — the state an operator is in for the first second of every run.
     await mountWorkspace(`/projects/${PROJECT_A}`, { [PROJECT_A]: [LIVE], [PROJECT_B]: [] });
     await expect.poll(() => feeds.opened.length, { timeout: 15_000 }).toBeGreaterThan(0);
 
-    await expect
-      .poll(() => one('[data-workspace-pending-plan]'), { timeout: 15_000 })
-      .not.toBeNull();
+    await expect.poll(() => one('[data-workspace-plan-panel]'), { timeout: 15_000 }).not.toBeNull();
+    expect(one('[data-task-board]')).not.toBeNull();
     expect(rows()).toHaveLength(0);
-    expect(one('[data-task-board]')).toBeNull();
 
-    // The canvas is still mounted — it owns the run's subscription, and
-    // unmounting it would close the feed that ends the wait. It is collapsed,
-    // not removed.
+    // Present in the DOM is not the claim — the old layout kept the canvas
+    // mounted at `height: 0`, which satisfies every assertion except the one an
+    // operator makes with their eyes.
+    const panel = one('[data-workspace-plan-panel]');
+    expect(panel?.getBoundingClientRect().height ?? 0).toBeGreaterThan(0);
+    expect(one('[data-task-board]')?.getBoundingClientRect().height ?? 0).toBeGreaterThan(0);
+
+    // AC3 — the canvas owns the run's subscription, and unmounting it would
+    // close the feed that ends the wait.
     expect(one('.vue-flow')).not.toBeNull();
     expect(feeds.opened).toHaveLength(1);
 
-    // And the moment a plan arrives the split comes back, with no remount of
-    // the canvas and no second feed.
+    // AC1 — "carrying its own empty state naming what it is waiting for". The
+    // plan panel says it through the canvas's `GraphEmptyNote`; the board has
+    // to say it too, or the operator reads eight column headers over nothing
+    // and cannot tell "no tasks yet" from "tasks failed to load".
+    expect(one('[data-board-empty]')?.textContent ?? '').toContain('plan');
+    expect(one('[data-board-empty]')?.textContent ?? '').not.toBe('');
+
+    // AC5 — when the plan arrives the panels are already there: it fills in
+    // place, with no remount of the canvas and no second feed.
     push(happyPath12());
     await expect.poll(() => rows().length, { timeout: 15_000 }).toBe(12);
-    expect(one('[data-workspace-pending-plan]')).toBeNull();
+    expect(one('[data-workspace-plan-panel]')).not.toBeNull();
+    expect(one('[data-task-board]')).not.toBeNull();
+    // And the empty state goes when there is something to show.
+    expect(one('[data-board-empty]')).toBeNull();
     expect(feeds.opened).toHaveLength(1);
+  });
+});
+
+/**
+ * KAR-27.5 AC4 — one grid, whatever state the run is in.
+ *
+ * The defect was two grid definitions that disagreed: the planned state's
+ * `auto / minmax(16rem, 1fr) / auto` over two columns, and a `--pending`
+ * modifier that switched to one column and three `auto` rows. Three `auto` rows
+ * in a `height: 100%` grid are stretched *equally* by `align-content`'s default,
+ * which is what put a void above the history table and another one below it.
+ *
+ * Verifies: EPIC-27-S27 · AC4
+ */
+suite('EPIC-27-S27 — the screen fills its viewport in every run state', () => {
+  it('lays a plan-less run out on the same tracks as a planned one', async () => {
+    await mountWorkspace(`/projects/${PROJECT_A}`, { [PROJECT_A]: [LIVE], [PROJECT_B]: [] });
+    await expect.poll(() => feeds.opened.length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await expect.poll(() => one('[data-workspace-plan-panel]'), { timeout: 15_000 }).not.toBeNull();
+
+    const tracks = (): { rows: number; columns: number } => {
+      const grid = one('[data-project-workspace]');
+      if (grid === null) throw new Error('the workspace grid is not on the page');
+      const style = globalThis.getComputedStyle(grid);
+      return {
+        rows: style.gridTemplateRows.split(' ').length,
+        columns: style.gridTemplateColumns.split(' ').length,
+      };
+    };
+
+    // No absolute track count is asserted: this view has a real narrow-width
+    // layout (`max-width: 819px` — one column, four rows), and the runner's
+    // viewport is inside it. The claim AC4 makes is not "two columns", it is
+    // that the *same* grid answers whatever state the run is in — so the two
+    // readings are compared with each other rather than with a number.
+    const pending = tracks();
+
+    push(happyPath12());
+    await expect.poll(() => rows().length, { timeout: 15_000 }).toBe(12);
+
+    expect(tracks()).toEqual(pending);
   });
 });
 
@@ -674,7 +743,14 @@ async function openPreExecutionRun(): Promise<void> {
   ]);
 }
 
-const stripText = (): string => one('[data-workspace-pending-plan]')?.textContent?.trim() ?? '';
+/**
+ * What the plan panel says, header and canvas together.
+ *
+ * It read `[data-workspace-pending-plan]` — the slim card that used to stand in
+ * for the panel while a run had no plan — until KAR-27.5 put the panel itself
+ * back on screen in that state and moved the strip into its header.
+ */
+const stripText = (): string => one('[data-workspace-plan-panel]')?.textContent?.trim() ?? '';
 
 suite('EPIC-27-S18 — the activity strip shows life and goes away', () => {
   it('appears on a session_opened, naming the node, the attempt and the elapsed', async () => {
@@ -716,6 +792,34 @@ suite('EPIC-27-S18 — the activity strip shows life and goes away', () => {
   });
 });
 
+/**
+ * KAR-27.5 AC2 — the strip is the plan panel's header, so the panel outlives it.
+ *
+ * Verifies: EPIC-27-S25
+ */
+suite('EPIC-27-S25 — the strip lives in the plan panel, not instead of it', () => {
+  it('keeps the panel when the turn concludes and the strip goes', async () => {
+    await openPreExecutionRun();
+    push([sessionOpened(2, 'framing', 0)]);
+
+    await expect
+      .poll(() => one('[data-workspace-plan-panel] [data-turn-activity]'), { timeout: 15_000 })
+      .not.toBeNull();
+
+    push([
+      preExec(3, 'human.requested', {
+        node: 'framing',
+        prompt: 'Which repository did you mean?',
+        options: [{ id: 'this-one', label: 'This one', effect: 'approve' }],
+      }),
+    ]);
+
+    await expect.poll(() => one('[data-turn-activity]'), { timeout: 15_000 }).toBeNull();
+    expect(one('[data-workspace-plan-panel]')).not.toBeNull();
+    expect(one('[data-task-board]')).not.toBeNull();
+  });
+});
+
 suite('EPIC-27-S19 — the plan panel names the actual state', () => {
   it('says the framing agent is working rather than "No plan yet"', async () => {
     await openPreExecutionRun();
@@ -725,12 +829,12 @@ suite('EPIC-27-S19 — the plan panel names the actual state', () => {
     push([sessionOpened(2, 'framing', 0)]);
     await expect.poll(() => one('[data-turn-activity]'), { timeout: 15_000 }).not.toBeNull();
 
-    // The strip is now the live one. The empty note is still mounted inside
-    // the collapsed canvas — the canvas is never unmounted, because it owns
-    // the run's subscription — but it is not what this strip is showing.
-    expect(
-      one('[data-workspace-pending-plan]')?.querySelector('[data-graph-empty]') ?? null,
-    ).toBeNull();
+    // KAR-27.5 AC2 — the live strip is the panel's header line, not a band
+    // standing in for the panel. The canvas's own empty note is still mounted
+    // below it (the canvas is never unmounted, because it owns the run's
+    // subscription) and now names the framing state, so "No plan yet" appears
+    // nowhere on the panel.
+    expect(one('[data-workspace-plan-panel] [data-turn-activity]')).not.toBeNull();
     expect(stripText()).not.toContain('No plan yet');
   });
 

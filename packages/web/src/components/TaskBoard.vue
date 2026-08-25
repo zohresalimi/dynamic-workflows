@@ -77,7 +77,26 @@ const emit = defineEmits<{ select: [id: string] }>();
       headers, which are half of what makes "which model is handling each"
       answerable at all.
     -->
-    <div class="board__frame">
+    <!--
+      KAR-27.5 AC1 — what the board says before there is anything to say.
+
+      Eight column headers over no rows is not an empty state: it reads exactly
+      the same whether the plan has not compiled yet or the load failed, and the
+      operator has no way to tell those apart. The sentence names the one that
+      is true, and names what will fill the columns when it changes.
+
+      It replaces the table rather than sitting under it, because the headers
+      describe rows and there are none — an accessible table with a header row
+      and an empty body is a promise the markup does not keep.
+    -->
+    <div v-if="bodies.length === 0" class="board__frame board__frame--empty">
+      <p class="board__empty" data-board-empty>
+        Nothing scheduled yet. Tasks appear here — with their agent, permission level, elapsed time
+        and cost — once the plan compiles.
+      </p>
+    </div>
+
+    <div v-else class="board__frame">
       <div class="board__scroll">
         <table class="board__table">
           <thead>
@@ -160,6 +179,20 @@ const emit = defineEmits<{ select: [id: string] }>();
   border-radius: var(--radius-lg);
   overflow: hidden;
   background: var(--surface);
+}
+
+.board__frame--empty {
+  display: grid;
+  place-content: center;
+  padding: 20px; /* geometry — the sentence's own breathing room */
+}
+
+.board__empty {
+  margin: 0;
+  max-width: 24rem; /* geometry — a readable measure, not the panel's width */
+  text-align: center;
+  color: var(--ink-muted);
+  font-size: var(--text-sm);
 }
 
 .board__scroll {
