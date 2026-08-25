@@ -47,6 +47,9 @@ only processes it can positively attribute to DeFlow, and never itself.
 | KAR-27.3 | A run that is framing looks alive: status, heartbeat and live activity (added) | M | — |
 | KAR-27.4 | The live-turn strip's facts run together: it styles itself with tokens the system does not have (added) | S | KAR-27.3 |
 | KAR-27.5 | While a run is framing, the workflows screen keeps its panels (added) | M | KAR-27.3 |
+| KAR-27.6 | Cancel actually ends the run: the child dies and the run leaves `cancelling` (added) | M | — |
+| KAR-27.7 | Pause, resume and stop, from the run surface (added) | M | KAR-27.6 |
+| KAR-27.8 | `daemon.json` does not outlive its daemon (added) | S | — |
 
 ### KAR-27.1 — Pause and resume a run, from the UI and the CLI
 
@@ -241,6 +244,97 @@ that contains it. This story keeps the invariant and drops the hiding.
 gate must render both panels and must not render a zero-height graph section; then the grid, whose
 assertion is that the pending and planned states resolve to the same track structure. No daemon
 call changes, no store changes, no new projection. Model: opus for implementation; sonnet verifies.
+
+### KAR-27.6 — Cancel actually ends the run (added 2026-08-25)
+
+**As** an operator who has asked a run to stop, **I want** it to stop, **so that** "cancel" is a
+control rather than a request the machine may decline.
+
+**Why now.** Observed twice on 2026-08-25, an hour apart, on two different runs. `POST
+/api/runs/:id/cancel` appended its event and answered `cancelling`; the run then sat in `cancelling`
+indefinitely. The agent child — a real `claude` process doing real work against a real repository —
+**was not signalled**, survived the cancel, survived the daemon being killed, reparented to PID 1 and
+kept running until it was killed by hand. A stop button on top of this behaviour would be a lie in
+the shape of a control, which is why this story precedes KAR-27.7 rather than shipping beside it.
+
+**This is not the pause of KAR-27.1.** Pause is deliberately a scheduling state that never signals a
+child, and that decision stands (see the scope decisions below). Cancel is the opposite: the operator
+has said the run is over, and the work must actually end.
+
+**Acceptance criteria**
+
+1. A cancelled run's in-flight child process tree is terminated: SIGTERM, a bounded grace, then
+   SIGKILL. No descendant survives the cancel, and none is left reparented to PID 1.
+2. The kill verifies the process start time still matches the one recorded before signalling, so a
+   recycled pid is never killed — the guard `killTree` already implements, reused rather than
+   re-derived.
+3. The run reaches a terminal state. `cancelling` is a state a run passes *through*, with a bounded
+   time in it, after which it is `aborted` with the outcome recorded — never an indefinite resting
+   place.
+4. A cancel that cannot fully terminate something reports **what** survived, with pid and reason, in
+   the ledger and to the caller. Failing loudly beats a terminal state that is not true.
+5. Killing the daemon does not orphan a run's children: a daemon shutting down terminates the trees
+   it spawned, and anything it cannot terminate is recorded before it exits.
+6. `deflow cancel` and the API answer identically, because they are the same path.
+
+**Execution plan.** TDD. Red first with a fake agent that ignores SIGTERM: cancel must escalate,
+must report, and the run must not remain `cancelling`. Then the daemon-shutdown case. Model: opus
+implements; sonnet verifies.
+
+### KAR-27.7 — Pause, resume and stop, from the run surface (added 2026-08-25)
+
+**As** an operator watching a run, **I want** the buttons on the screen, **so that** controlling a
+run does not require `curl` and a bearer token.
+
+**Why now.** The endpoints have existed since KAR-15.5 — `POST /api/runs/:id/pause`, `/resume`,
+`/cancel` — and KAR-26.5's audit recorded that **no frame surface calls any of them**. On
+2026-08-25 the owner asked for the control three times in one session, and every stop performed that
+day was performed with `curl`.
+
+**Scope.** The controls and the wiring, over the endpoints that exist and the cancel KAR-27.6 makes
+honest. Drive-level pause semantics — deferred wakes, held retries, surviving a restart — remain
+KAR-27.1's and are not smuggled in here.
+
+**Acceptance criteria**
+
+1. The run surface shows a pause control on a running run, a resume control on a paused one, and a
+   stop control on any run that is not already terminal. Each calls the endpoint that exists.
+2. Each control reports what happened: the run's state changes on screen from the ledger, and a
+   refusal (already concluded, already cancelled) is shown as the message the daemon gave, not
+   swallowed.
+3. A control is disabled, with a reason, exactly when the daemon would refuse it — never enabled
+   into a predictable error.
+4. Stop asks for confirmation, because it is not reversible; pause does not, because it is.
+5. The controls are reachable by keyboard and named for assistive technology.
+
+**Execution plan.** TDD at the component contract: which control is offered in which run state, and
+what each sends. Model: opus.
+
+### KAR-27.8 — `daemon.json` does not outlive its daemon (added 2026-08-25)
+
+**As** anything that looks for the daemon, **I want** the file to describe a daemon that exists,
+**so that** a dead pid and a dead token are not what a client finds.
+
+**Why now.** Observed 2026-08-25: after a daemon was killed, `~/.DeFlow/daemon.json` still named its
+pid, its port and its token. A client reading it was sent to a corpse, and the token it carried
+answered `bad_token`. Separately, the epoch climbed by ~120 during one gate run, because the test
+suites boot daemons against the same data dir and each rewrites this file — so the staleness is not
+a rare crash case, it is routine.
+
+**Acceptance criteria**
+
+1. A reader of `daemon.json` can tell a live daemon from a dead one without making a request: the
+   recorded `processStartedAt` is verified against the pid, and a mismatch or a missing process reads
+   as "no daemon", exactly as the boot reaper already compares it.
+2. A daemon that exits by any path it can observe removes the file; a daemon that cannot (SIGKILL)
+   is covered by the check above rather than by hope.
+3. A test daemon booting against a shared data dir does not leave the file naming itself after it
+   exits.
+4. `deflow status` and every client that reads this file report "no daemon" rather than a stale
+   endpoint.
+
+**Execution plan.** TDD. Red first: write a `daemon.json` naming a pid that is not a daemon, and
+assert every reader says no daemon. Model: opus.
 
 ## Scope decisions recorded rather than taken quietly
 

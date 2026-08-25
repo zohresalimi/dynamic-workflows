@@ -148,3 +148,74 @@
 - **Given** the workflows screen at a fixed viewport height, on a framing run, a planned run and a run at an open gate
 - **When** each renders
 - **Then** the final row reaches the bottom of the available height and the right column reaches the right edge modulo the shell's padding, with no stretched empty track between sections — and the gate, when open, is still the page's one raised card above the panels.
+
+## KAR-27.6 — Cancel actually ends the run (added 2026-08-25)
+
+**EPIC-27-S28 — a cancelled run's child does not survive it**
+- **Given** a run with an agent child in flight
+- **When** the run is cancelled
+- **Then** the child's process tree is terminated — SIGTERM, a bounded grace, then SIGKILL — and no descendant is left running or reparented to PID 1.
+
+**EPIC-27-S29 — a child that ignores SIGTERM is escalated, not abandoned**
+- **Given** a fake agent that ignores SIGTERM
+- **When** the run is cancelled
+- **Then** the grace expires, SIGKILL follows, the process is gone, and the escalation is recorded.
+
+**EPIC-27-S30 — `cancelling` is passed through, never rested in**
+- **Given** a cancelled run
+- **When** the bounded cancel window expires
+- **Then** the run is in a terminal state with its outcome recorded, and no run remains `cancelling` indefinitely.
+
+**EPIC-27-S31 — a recycled pid is never killed**
+- **Given** a recorded pid whose process start time no longer matches the process now holding that pid
+- **When** the cancel sweep runs
+- **Then** that process is not signalled, and the mismatch is reported.
+
+**EPIC-27-S32 — what survived is named**
+- **Given** a cancel that cannot terminate one descendant
+- **When** it completes
+- **Then** the ledger and the caller both carry the pid and the reason, and the run's state does not claim a clean end.
+
+**EPIC-27-S33 — a daemon shutting down does not orphan its children**
+- **Given** a daemon with a run in flight
+- **When** the daemon is asked to stop
+- **Then** it terminates the trees it spawned before exiting, and records anything it could not.
+
+## KAR-27.7 — Pause, resume and stop, from the run surface (added 2026-08-25)
+
+**EPIC-27-S34 — the controls are offered in the states they apply to**
+- **Given** a running run, a paused run and a concluded run in turn
+- **When** the run surface renders
+- **Then** the running one offers pause and stop, the paused one offers resume and stop, and the concluded one offers neither pause nor stop.
+
+**EPIC-27-S35 — a control does what it says through the endpoint that exists**
+- **Given** a running run
+- **When** the operator uses pause, then resume, then stop
+- **Then** each calls its own endpoint once, and the run's state on screen follows the ledger rather than an optimistic guess.
+
+**EPIC-27-S36 — a refusal is shown, not swallowed**
+- **Given** a run the daemon will refuse to pause
+- **When** the control is used
+- **Then** the daemon's own message is shown to the operator.
+
+**EPIC-27-S37 — stop asks first**
+- **Given** a running run
+- **When** stop is used
+- **Then** a confirmation is required before anything is sent, and pause requires none.
+
+## KAR-27.8 — `daemon.json` does not outlive its daemon (added 2026-08-25)
+
+**EPIC-27-S38 — a stale file reads as "no daemon"**
+- **Given** a `daemon.json` naming a pid that is not a running daemon, or whose recorded process start time does not match that pid's
+- **When** any client reads it
+- **Then** it reports no daemon, and never offers the recorded port and token as live.
+
+**EPIC-27-S39 — a daemon that exits cleanly takes its file with it**
+- **Given** a running daemon
+- **When** it exits by any path it can observe
+- **Then** `daemon.json` is removed.
+
+**EPIC-27-S40 — a test daemon does not leave the file naming itself**
+- **Given** a test that boots a daemon against a shared data dir
+- **When** the test ends
+- **Then** the file does not name that daemon.
