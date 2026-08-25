@@ -622,12 +622,21 @@ suite('EPIC-27-S24 — a run with no plan keeps both panels', () => {
     expect(one('.vue-flow')).not.toBeNull();
     expect(feeds.opened).toHaveLength(1);
 
+    // AC1 — "carrying its own empty state naming what it is waiting for". The
+    // plan panel says it through the canvas's `GraphEmptyNote`; the board has
+    // to say it too, or the operator reads eight column headers over nothing
+    // and cannot tell "no tasks yet" from "tasks failed to load".
+    expect(one('[data-board-empty]')?.textContent ?? '').toContain('plan');
+    expect(one('[data-board-empty]')?.textContent ?? '').not.toBe('');
+
     // AC5 — when the plan arrives the panels are already there: it fills in
     // place, with no remount of the canvas and no second feed.
     push(happyPath12());
     await expect.poll(() => rows().length, { timeout: 15_000 }).toBe(12);
     expect(one('[data-workspace-plan-panel]')).not.toBeNull();
     expect(one('[data-task-board]')).not.toBeNull();
+    // And the empty state goes when there is something to show.
+    expect(one('[data-board-empty]')).toBeNull();
     expect(feeds.opened).toHaveLength(1);
   });
 });
