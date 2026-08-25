@@ -31,9 +31,24 @@
  * `RunMetaStrip` read `useRunStore()` for themselves, which is the exception
  * those two components already made and documented — reading a store is not
  * mutating one.
+ *
+ * ## KAR-27.7 — and the one thing on it you can press
+ *
+ * The header is where pause, resume and stop belong: it is already the run's
+ * paragraph of facts, and the status pill it ends with is the fact those
+ * buttons act on. `./RunControls.vue` is the whole of it — this file adds the
+ * position and nothing else, and passes the status down rather than letting a
+ * second component read the store, because `../views/ProjectWorkflowsView.vue`
+ * is the one place that knows how to fall back to the history row for a run
+ * whose feed has not caught up.
+ *
+ * Law 4 is untouched: the controls say *verbs*, not a status word. The pill is
+ * still the only thing on this surface that names a state.
  */
+import type { RunStatus } from '@DeFlow/core';
 import type { SubmittedTask } from '../ledger/projections/index.ts';
 import RunStatusPill from './frame/RunStatusPill.vue';
+import RunControls from './RunControls.vue';
 import RunMetaStrip from './RunMetaStrip.vue';
 import RunTaskBanner from './RunTaskBanner.vue';
 
@@ -57,6 +72,10 @@ defineProps<{
   readonly healthMessage: string | null;
   /** When the run on screen was created — the `started` pair's value. */
   readonly startedAt: string | null;
+  /** The run the controls act on, or `null` before one is open (KAR-27.7). */
+  readonly runId: string | null;
+  /** That run's status as the ledger reduced it — never this page's guess. */
+  readonly runStatus: RunStatus | null;
 }>();
 </script>
 
@@ -74,6 +93,13 @@ defineProps<{
     </div>
 
     <RunMetaStrip :started-at="startedAt" />
+
+    <!--
+      KAR-27.7 — the controls, under the facts they act on. Rendered only for a
+      run that exists; `RunControls` itself renders nothing for a run that has
+      concluded, so a finished run's header ends at its meta strip.
+    -->
+    <RunControls v-if="runId !== null" :run-id="runId" :status="runStatus" />
 
     <!--
       A project whose directory has gone still shows everything below; it just

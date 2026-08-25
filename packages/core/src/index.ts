@@ -1176,6 +1176,22 @@ export {
   reviewerGateSegmentId,
   reviewerManifestIsClean,
 } from './reviewer-packet.ts';
+// KAR-15.5, moved here by KAR-27.7 — the pure half of the daemon's control
+// state machine. It lives in core because two packages decide with it now: the
+// daemon performs the plan, and the run surface reads the *refusal* off it, so
+// a disabled control is disabled exactly when the daemon would refuse it, in
+// the daemon's own sentence.
+export type {
+  RunControlAppend,
+  RunControlPlan,
+  RunControlRefusalCode,
+  RunControlRequest,
+  RunControlSource,
+  RunControlTerminate,
+  RunControlVerb,
+  RunSituation,
+} from './run-control-plan.ts';
+export { planRunControl, RUN_CONTROL_ENDED, RUN_CONTROL_UNAPPROVED } from './run-control-plan.ts';
 export { mintRunId } from './run-id.ts';
 export type {
   BudgetBreach,

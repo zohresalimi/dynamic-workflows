@@ -83,6 +83,33 @@ export const LIFECYCLE_STATUS: Readonly<Record<string, RunStatus>> = {
   'human.requested': 'needs-human',
 };
 
+/**
+ * KAR-27.7 — the four kinds the *control verbs* append, which the global topic
+ * does not carry but a single run's own feed does.
+ *
+ * They are deliberately not folded into `LIFECYCLE_STATUS` above: that table is
+ * total over `?runs=*`, and its comment says so, so widening it would make a
+ * true sentence false. They are folded *with* it by `useRunStore` — see
+ * `RUN_STATUS_BY_KIND` — because a tab watching one run receives every kind on
+ * that run, and a pause control that could not see `run.paused` would be a
+ * control whose own effect was invisible to it.
+ *
+ * `run.cancel.requested` reduces to `cancelling` and not to an ended run: the
+ * ladder is still running, and `run.aborted` is what says it finished.
+ */
+const CONTROL_STATUS: Readonly<Record<string, RunStatus>> = {
+  'run.started': 'running',
+  'run.paused': 'paused',
+  'run.resumed': 'running',
+  'run.cancel.requested': 'cancelling',
+};
+
+/** Every kind that says something about a run's status, on any transport. */
+export const RUN_STATUS_BY_KIND: Readonly<Record<string, RunStatus>> = {
+  ...LIFECYCLE_STATUS,
+  ...CONTROL_STATUS,
+};
+
 export const useRunListStore = defineStore('run-list', () => {
   const rows = shallowRef<RunListRow[]>([]);
   /** How many `GET /api/runs` requests this store has made. EPIC-19-S2's

@@ -360,6 +360,27 @@ const liveTurn = computed(() =>
 const startedAt = computed<string | null>(
   () => history.value.find((row) => row.runId === currentRun.value)?.createdAt ?? null,
 );
+
+/**
+ * KAR-27.7 AC2 — the status the header's controls are offered against, and it
+ * comes from the ledger by both routes it can come from.
+ *
+ * The store first, because a tab watching a live run folds `run.paused` and
+ * `run.resumed` off that run's own feed and is therefore current to the frame.
+ * The history row second, because the daemon's `reduce()` produced it and it is
+ * the honest answer for a run whose feed has not caught up yet — or for a past
+ * run opened from history, whose feed will never carry a lifecycle frame at
+ * all. Neither is this view's own opinion, which is the point: nothing here
+ * moves the status because a control was pressed.
+ *
+ * Guarded on `run.runId === currentRun` for the reason `openGate` is.
+ */
+const runStatus = computed<RunStatus | null>(() => {
+  if (currentRun.value === null) return null;
+  const live =
+    run.runId === currentRun.value ? (run.runState?.status ?? run.lifecycleStatus) : null;
+  return live ?? history.value.find((row) => row.runId === currentRun.value)?.status ?? null;
+});
 </script>
 
 <template>
@@ -388,6 +409,8 @@ const startedAt = computed<string | null>(
           :project-path="project?.path ?? null"
           :health-message="project?.health.message ?? null"
           :started-at="startedAt"
+          :run-id="currentRun"
+          :run-status="runStatus"
         />
         <RouterLink to="/projects" class="workspace__back">Projects</RouterLink>
       </div>

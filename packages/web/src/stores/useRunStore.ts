@@ -122,7 +122,7 @@ import {
   shallowUnchanged,
   spanUnchanged,
 } from './memoise.ts';
-import { LIFECYCLE_STATUS } from './useRunListStore.ts';
+import { RUN_STATUS_BY_KIND } from './useRunListStore.ts';
 
 /**
  * The four counters `../app/leak-assert.ts` prints, and the four candidates
@@ -239,11 +239,19 @@ export const useRunStore = defineStore('run', () => {
    * scrubbed position — and it is why the frame's status pill showed nothing
    * on exactly the tab it was built for.
    *
-   * The fold is four event kinds, and the table is `useRunListStore`'s own
-   * `LIFECYCLE_STATUS` imported rather than copied: the run list and the status
-   * pill disagreeing about whether a run is `needs-human` is the failure a
-   * second copy of that table would eventually produce, and it would show up as
-   * two words on the same screen contradicting each other.
+   * The fold is `useRunListStore`'s own table imported rather than copied: the
+   * run list and the status pill disagreeing about whether a run is
+   * `needs-human` is the failure a second copy of that table would eventually
+   * produce, and it would show up as two words on the same screen contradicting
+   * each other.
+   *
+   * **KAR-27.7 widened it from the global topic's four kinds to
+   * `RUN_STATUS_BY_KIND`.** This store follows *one* run over that run's own
+   * feed, which carries `run.started`, `run.paused`, `run.resumed` and
+   * `run.cancel.requested` as well — kinds `?runs=*` does not fan out and the
+   * run list therefore never sees. Before this, a tab that paused a run watched
+   * its own pause change nothing on screen, because the only event that says a
+   * run is paused was one this fold ignored.
    */
   const lifecycleStatus = ref<RunStatus | null>(null);
   const hydratedFromSeq = ref(0);
@@ -423,7 +431,7 @@ export const useRunStore = defineStore('run', () => {
     const lowest = lowestSeqAppliedSinceHydrate.value;
     if (lowest === null || event.seq < lowest) lowestSeqAppliedSinceHydrate.value = event.seq;
     for (const name of ownersOf(event.kind)) bump(name);
-    const lifecycle = LIFECYCLE_STATUS[event.kind];
+    const lifecycle = RUN_STATUS_BY_KIND[event.kind];
     if (lifecycle !== undefined) lifecycleStatus.value = lifecycle;
     return true;
   }
