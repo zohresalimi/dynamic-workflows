@@ -176,11 +176,24 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
+/*
+ * The gutters are stated literally, as every other component in this package
+ * states its geometry. There is no spacing token to reach for: the system is
+ * three colour families plus the `--text-*`/`--radius-*` ramps
+ * (`docs/design-system.md` § The tokens), and the `--space-2` this rule used to
+ * name existed nowhere — which does not warn, it just resolves the declaration
+ * to `normal` and runs every fact in the strip into the next (KAR-27.4).
+ *
+ * Column and row gaps are separate for the same reason `RunMetaStrip` splits
+ * them: this row wraps, and a wrapped line wants less air above it than it
+ * wants between two facts on one line.
+ */
 .turn-strip {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: var(--space-2);
+  column-gap: 0.75rem; /* geometry — fact-to-fact gutter */
+  row-gap: 4px; /* geometry — the wrapped row's own gap */
   min-width: 0;
   color: var(--ink-muted);
   font-size: var(--text-sm);
@@ -225,7 +238,7 @@ onBeforeUnmount(() => {
 
 .turn-strip__calls {
   display: flex;
-  gap: var(--space-1);
+  gap: 6px; /* geometry — call-to-call gutter, tighter than the facts' own */
   min-width: 0;
   overflow: hidden;
 }
