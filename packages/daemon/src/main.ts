@@ -26,6 +26,7 @@ import { createLiveRunExecution } from './pipeline/live-nodes.ts';
 import { checkSchemaRegistry, EX_CONFIG } from './preflight.ts';
 import { probeProvidersOnBoot } from './providers/boot-probe.ts';
 import { pathRoots } from './providers/detect.ts';
+import { SHUTDOWN_DEADLINE_MS } from './shutdown.ts';
 
 const daemon = log.child({ mod: 'daemon' });
 
@@ -174,14 +175,24 @@ async function shutdown(signal: NodeJS.Signals): Promise<void> {
   stopping = true;
   daemon.info({ signal }, 'DeFlowd stopping');
 
-  // node --watch spawns the replacement as soon as this process is gone, so the
-  // port has to be released promptly or the next life fails with EADDRINUSE.
+  // The last-resort deadline on a shutdown that has wedged. node --watch spawns
+  // the replacement as soon as this process is gone, so the port has to be
+  // released promptly or the next life fails with EADDRINUSE — but the port is
+  // closed early in `started.shutdown()`, long before the part that takes time,
+  // so this deadline is not what protects the restart.
+  //
+  // KAR-27.10 — it was two seconds, and `stopChildren`'s SIGTERM grace alone is
+  // five. That is not a race: **no** shutdown here could ever reach SIGKILL, so
+  // a child that ignored SIGTERM was guaranteed to outlive the daemon and be
+  // adopted by init, still working. `SHUTDOWN_DEADLINE_MS` is derived from the
+  // ladder's own constants for that reason, and named rather than inlined so
+  // that raising the grace raises this too.
   //
   // Through the Clock port rather than a bare `setTimeout` (KAR-06.6 AC1): the
   // daemon owns exactly one timer, in clock.ts, and everything that waits goes
   // through it or is a `node_wake` row. `systemClock.setTimer` already
   // `unref()`s, so this deadline cannot be the reason DeFlowd stays alive.
-  systemClock.setTimer(2_000, () => process.exit(0));
+  systemClock.setTimer(SHUTDOWN_DEADLINE_MS, () => process.exit(0));
 
   // Port, then ledger, then lease: the next daemon may only get in once this
   // one has stopped writing.

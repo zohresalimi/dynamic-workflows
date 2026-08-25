@@ -31,23 +31,70 @@
  * produces, and nothing about the work was wrong — the same attempt run again
  * is expected to succeed. `detail.cause` is what a test and the node inspector
  * read, so neither depends on the wording.
+ *
+ * KAR-27.10 closes the three ways this could still leave a process running
+ * (EPIC-27-S45, EPIC-27-S46), and none of them needed a second ladder:
+ *
+ * - **The ladder is given the wall clock it needs.** `SHUTDOWN_DEADLINE_MS` is
+ *   the bound an entrypoint may put on its own exit, derived from the ladder
+ *   rather than chosen — `main.ts` armed two seconds against a five-second
+ *   SIGTERM grace, so rung 3 was unreachable and a SIGTERM-proof child always
+ *   outlived the daemon.
+ * - **The groups are swept concurrently.** Sequentially, `n` children cost `n`
+ *   ladders of wall clock, and any deadline that is honest for one child is a
+ *   lie for two. Nothing here is shared between rows but the ledger, and every
+ *   ledger call in this file is synchronous.
+ * - **A survivor is a ledger record, not a log line.** `run.kill_failed` is the
+ *   kill switch's own vocabulary for the same fact — pid, node and the `ps`
+ *   state that says *why* it did not die — and its row is deliberately left
+ *   `live`, so the next boot's reaper inherits the problem instead of a
+ *   silence. A `discarded` row is invisible to the reaper, which is the exact
+ *   opposite of what "the next daemon knows what survived" requires.
  */
-import { processStartTime } from '@DeFlow/adapters';
+import { type GroupMember, processStartTime } from '@DeFlow/adapters';
 import type { Clock, Db, EventSeq, NodeFailure, NodeId, Random, RunId } from '@DeFlow/core';
 import type { AppendOptions, ProcessRow } from '@DeFlow/ledger';
-import { headSeq, markProcess, readLiveProcesses, replayAll } from '@DeFlow/ledger';
-import { type GroupSweepPorts, sweepGroup } from './cancel.ts';
+import { appendEvents, headSeq, markProcess, readLiveProcesses, replayAll } from '@DeFlow/ledger';
+import { type GroupSweepPorts, KILL_VERIFY_MS, sweepGroup, TERM_GRACE_MS } from './cancel.ts';
 import { log } from './logging.ts';
 import { recordNodeFailure } from './retry.ts';
 
 const stopping = log.child({ mod: 'shutdown' });
 
+/**
+ * The longest a graceful stop may take before an entrypoint is entitled to
+ * exit on top of it — SIGTERM, the whole grace, SIGKILL, the verification, and
+ * room for the ledger writes that record what happened.
+ *
+ * Derived rather than chosen, and asserted against the ladder's own constants
+ * in `test/shutdown-deadline.test.ts`: `TERM_GRACE_MS` is documented as a
+ * default rather than a law, and a literal here would go quietly wrong the day
+ * it is raised. The groups are swept concurrently, so this is one ladder's
+ * worth of clock however many children there are.
+ */
+export const SHUTDOWN_DEADLINE_MS = TERM_GRACE_MS + KILL_VERIFY_MS + 3_000;
+
 /** What happened to one child on the way out. */
 export interface StoppedChild {
   readonly row: ProcessRow;
   readonly outcome: 'stopped' | 'survived' | 'gone' | 'pid-reused';
-  /** Non-zombie members still in the group after the ladder. Empty is success. */
-  readonly survivors: readonly number[];
+  /**
+   * Non-zombie members still in the group after the ladder. Empty is success.
+   *
+   * The `ps` `STAT` travels with each pid rather than the bare number, because
+   * "pid 4244 survived" invites a bug report and "pid 4244 survived in state
+   * `D`" says why SIGKILL did not land.
+   */
+  readonly survivors: readonly GroupMember[];
+}
+
+/** One surviving process, as `run.kill_failed` names it. */
+interface ShutdownSurvivor {
+  readonly node: string;
+  readonly attempt: number;
+  readonly pid: number;
+  readonly pgid: number;
+  readonly stat: string;
 }
 
 export interface StopChildrenPorts extends GroupSweepPorts {
@@ -108,14 +155,15 @@ export async function stopChildren(
   const appendOptions: AppendOptions =
     ports.spillTo === undefined ? {} : { spillTo: ports.spillTo };
 
+  // Attribution first, for every row, and **before a single signal is sent**.
+  // The same revalidation the reaper and the kill switch perform, and for the
+  // same reason: by the time a shutdown runs, the pid this daemon recorded may
+  // belong to somebody else entirely. A row that cannot be verified is
+  // discarded rather than signalled — "we could not check" and "it is not the
+  // process we meant" have the same correct answer (AC4).
+  const attributed: ProcessRow[] = [];
   for (const row of rows) {
     const key = { runId: row.runId, nodeId: row.nodeId, attempt: row.attempt };
-
-    // The same revalidation the reaper and the kill switch perform, and for the
-    // same reason: by the time a shutdown runs, the pid this daemon recorded
-    // may belong to somebody else entirely. A row that cannot be verified is
-    // discarded rather than signalled — "we could not check" and "it is not the
-    // process we meant" have the same correct answer.
     const observed = startTime(row.pid);
     if (observed === null) {
       // The child is already gone. The row is deliberately **left alone**:
@@ -131,26 +179,88 @@ export async function stopChildren(
       stopped.push({ row, outcome: 'pid-reused', survivors: [] });
       continue;
     }
-
-    const survivors = await sweepGroup(row.pgid, ports.clock.now(), ports);
-    const pids = survivors.map((member) => member.pid);
-    markProcess(db, key, survivors.length === 0 ? 'reaped' : 'discarded');
-    stopped.push({
-      row,
-      outcome: survivors.length === 0 ? 'stopped' : 'survived',
-      survivors: pids,
-    });
-
-    if (survivors.length > 0) {
-      stopping.error(
-        { runId: row.runId, nodeId: row.nodeId, pgid: row.pgid, survivors: pids },
-        `the process group of ${row.nodeId} survived SIGKILL: pids ${pids.join(', ')} are still running`,
-      );
-    }
+    attributed.push(row);
   }
 
+  // All at once, not one after another: a stop with three children in flight
+  // would otherwise cost three full ladders of wall clock, and no exit deadline
+  // can be honest about that. The sweeps share nothing — the ledger calls below
+  // are synchronous, and every `await` in the ladder is a `Clock` sleep.
+  const swept = await Promise.all(
+    attributed.map(async (row) => ({
+      row,
+      survivors: await sweepGroup(row.pgid, ports.clock.now(), ports),
+    })),
+  );
+
+  for (const { row, survivors } of swept) {
+    const key = { runId: row.runId, nodeId: row.nodeId, attempt: row.attempt };
+    if (survivors.length === 0) {
+      markProcess(db, key, 'reaped');
+      stopped.push({ row, outcome: 'stopped', survivors: [] });
+      continue;
+    }
+
+    // The row stays `live` on purpose (AC2, AC3). This daemon is out of moves,
+    // and marking the row terminal here would hide the survivor from the only
+    // thing left that can act on it: the next boot's reaper, which re-checks
+    // the start time and signals again.
+    stopped.push({ row, outcome: 'survived', survivors });
+    const pids = survivors.map((member) => member.pid);
+    stopping.error(
+      { runId: row.runId, nodeId: row.nodeId, pgid: row.pgid, survivors: pids },
+      `the process group of ${row.nodeId} survived SIGKILL: pids ${pids.join(', ')} are still running`,
+    );
+  }
+
+  reportSurvivors(db, stopped, ports);
   concludeInterrupted(db, stopped, ports, appendOptions);
   return stopped;
+}
+
+/**
+ * AC2 — everything this daemon could not terminate, in the ledger, before the
+ * process ends.
+ *
+ * `run.kill_failed` and not a new kind: the operator's kill switch already
+ * writes exactly this fact, every surface already renders it, and a second
+ * spelling of "these pids outlived us" would be a second thing every reader
+ * has to learn. One event per run rather than per node, for the same reason it
+ * is run-scoped there — what an operator needs is one list naming everything
+ * that outlived the daemon, not a record per node they have to assemble.
+ *
+ * A log line was what this was until now, and a log line is not readable by the
+ * next daemon, by the API, or by an operator who comes back to the machine
+ * tomorrow.
+ */
+function reportSurvivors(db: Db, stopped: readonly StoppedChild[], ports: StopChildrenPorts): void {
+  const byRun = new Map<string, ShutdownSurvivor[]>();
+  for (const entry of stopped) {
+    if (entry.outcome !== 'survived') continue;
+    const survivors = entry.survivors.map((member) => ({
+      node: entry.row.nodeId,
+      attempt: entry.row.attempt,
+      pid: member.pid,
+      pgid: entry.row.pgid,
+      // The reason, in the OS's own words: `D` is uninterruptible in a syscall,
+      // which is not a DeFlow bug and is not fixable by signalling harder.
+      stat: member.stat,
+    }));
+    byRun.set(entry.row.runId, [...(byRun.get(entry.row.runId) ?? []), ...survivors]);
+  }
+
+  for (const [runId, survivors] of byRun) {
+    appendEvents(db, [
+      {
+        runId: runId as RunId,
+        ts: ports.clock.now(),
+        kind: 'run.kill_failed',
+        v: 1,
+        epoch: ports.epoch,
+        payload: { survivors },
+      },
+    ]);
+  }
 }
 
 /**

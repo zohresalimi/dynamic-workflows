@@ -805,7 +805,7 @@ export type {
 } from './services/terminal-service.ts';
 export { createTerminalService, DEFAULT_CAPTURE_BYTES } from './services/terminal-service.ts';
 export type { StopChildrenPorts, StoppedChild } from './shutdown.ts';
-export { stopChildren } from './shutdown.ts';
+export { SHUTDOWN_DEADLINE_MS, stopChildren } from './shutdown.ts';
 export { amendSpec } from './spec/amend.ts';
 // KAR-06.5 — the imperative half of the retry ladder: the classified failure,
 // the wake row and the events, in one transaction.
