@@ -45,6 +45,8 @@ only processes it can positively attribute to DeFlow, and never itself.
 | KAR-27.1 | Pause and resume a run, from the UI and the CLI | M | — |
 | KAR-27.2 | Orphaned daemons: counted, named and killable from the UI | M | — |
 | KAR-27.3 | A run that is framing looks alive: status, heartbeat and live activity (added) | M | — |
+| KAR-27.4 | The live-turn strip's facts run together: it styles itself with tokens the system does not have (added) | S | KAR-27.3 |
+| KAR-27.5 | While a run is framing, the workflows screen keeps its panels (added) | M | KAR-27.3 |
 
 ### KAR-27.1 — Pause and resume a run, from the UI and the CLI
 
@@ -162,6 +164,83 @@ holds the child's stdout stream the whole time and throws it away unless the tur
 implementation: opus; verification: sonnet). TDD: red first at the status projection (a seeded
 ledger with `session_opened` and no completion must not label `waiting`), then the incremental
 io persistence at `spawnTurn`, then the API/UI strip.
+
+### KAR-27.4 — The live-turn strip's facts run together (added 2026-08-25)
+
+**As** an operator watching a framing turn, **I want** the activity strip's facts to read as
+separate facts, **so that** the one surface that proves the run is alive is not an unbroken run of
+letters.
+
+**Why now.** On 2026-08-25 the operator opened the workflows screen on a framing run and read
+`framingattempt 1 of 3running 1m 24slast output 1s agomcp__claude_ai_Linear__list_issuesmcp__claude_ai_Linear__get_issueBash`.
+`TurnActivityStrip.vue` sets its flex gutters with `var(--space-2)` and `var(--space-1)`. **No
+`--space-*` token exists** — `docs/design-system.md` § *The tokens* names three families plus the
+`--text-*`, `--radius-*`, `--state-*` ramps and has no spacing scale at all; every other component
+states geometry literally with a `/* geometry */` note. An undefined custom property makes the
+declaration invalid at computed-value time, so `gap` falls back to `normal` — zero — and every fact
+in KAR-27.3's strip abuts the next. The layout was never wrong; the gutters were never applied.
+
+**Acceptance criteria**
+
+1. The strip's facts are separated by real gutters in both themes: node name, attempt, elapsed,
+   time-since-last-output and each tool call are visually distinct, and no two adjacent facts
+   touch. The wrap behaviour at narrow widths is unchanged.
+2. The strip states its geometry in the vocabulary the design system actually has — literal
+   lengths carrying the same `/* geometry */` note its siblings use — and references no
+   `--space-*` token anywhere.
+3. No CSS custom property referenced in `packages/web/src` resolves to a token the stylesheet does
+   not define. A check in `packages/web/scripts/` fails the build when one does, so the next
+   undefined token is a red test rather than a screenshot an operator has to notice.
+4. Behaviour is untouched: the poll interval, the held-chunk bound, the shown-call count, the
+   unmount teardown and the four facts are exactly as KAR-27.3 left them.
+
+**Execution plan.** TDD. Red first at the token check — it must fail on the two live `--space-*`
+references before anything is edited — then the strip's own rules, then a rendering assertion that
+the strip's computed gutter is non-zero. Model: opus for implementation; sonnet verifies.
+
+### KAR-27.5 — While a run is framing, the workflows screen keeps its panels (added 2026-08-25)
+
+**As** an operator watching a run frame, **I want** the plan panel and the tasks panel to stay on
+screen saying what they are waiting for, **so that** the minutes before a plan exists do not read
+as a broken page.
+
+**Why now.** Found in the same 2026-08-25 session as KAR-27.4, on the same screen. The workflows
+view computes `stripped = pendingPlan || hydratingPlan`, and `hydratingPlan` is true for the
+*whole* framing phase — no plan nodes and no open gate. While `stripped`, the tasks panel is
+removed from the DOM (`v-if="!stripped"`) and the plan panel is collapsed to `height: 0`
+(`.workspace__graph--tucked`), leaving a single column of three `auto` rows inside a `height: 100%`
+grid; grid's default `align-content: stretch` then grows all three tracks equally. What the
+operator sees for minutes is a one-line strip, a large void, and a history table floating
+mid-page — touching neither the bottom edge nor the right edge, with no tasks panel at all.
+
+**The collapse was a deliberate decision, and only half of it was needed.** Commit `81bd0df`
+records it: the canvas is collapsed rather than unmounted *because unmounting it would close the
+run's feed*. That reason justifies keeping the graph mounted; it never required hiding the panel
+that contains it. This story keeps the invariant and drops the hiding.
+
+**Acceptance criteria**
+
+1. While a run has no plan — framing, awaiting spec approval, or planner compiling — the plan
+   panel and the tasks panel are both on screen, each carrying its own empty state naming what it
+   is waiting for. Neither is removed from the DOM; neither is collapsed to zero height.
+2. The live activity strip of KAR-27.3 renders *inside* the plan panel as its header line, rather
+   than as a separate band standing in for the panel. When the turn concludes the strip goes and
+   the panel stays.
+3. The one-canvas / one-subscription-per-run invariant holds unchanged: the graph is still never
+   unmounted between plan states, and `test/one-workspace-surface.test.ts` passes **unmodified**.
+4. The screen fills its viewport at every run state: the last row meets the bottom edge and the
+   right column meets the right edge, modulo the shell's own padding, with no stretched empty
+   track between sections. A run with a plan, a run framing, and a run at a gate lay out on the
+   same grid rather than on two grids that disagree.
+5. When the plan arrives the panels are already there: the graph fills in place, with no layout
+   jump between the pending and planned states.
+6. The gate card keeps the primacy `81bd0df` gave it — an open gate is still the page's one raised
+   card, full width, above the panels.
+
+**Execution plan.** TDD. Red first at the view: a run whose feed is hydrated with no plan and no
+gate must render both panels and must not render a zero-height graph section; then the grid, whose
+assertion is that the pending and planned states resolve to the same track structure. No daemon
+call changes, no store changes, no new projection. Model: opus for implementation; sonnet verifies.
 
 ## Scope decisions recorded rather than taken quietly
 
