@@ -149,37 +149,37 @@
 - **When** each renders
 - **Then** the final row reaches the bottom of the available height and the right column reaches the right edge modulo the shell's padding, with no stretched empty track between sections — and the gate, when open, is still the page's one raised card above the panels.
 
-## KAR-27.6 — Cancel actually ends the run (added 2026-08-25)
+## KAR-27.6 — A cooperative cancel stops parking silently (added 2026-08-25)
 
-**EPIC-27-S28 — a cancelled run's child does not survive it**
-- **Given** a run with an agent child in flight
-- **When** the run is cancelled
-- **Then** the child's process tree is terminated — SIGTERM, a bounded grace, then SIGKILL — and no descendant is left running or reparented to PID 1.
+**EPIC-27-S28 — an unanswered cooperative cancel says so**
+- **Given** a run cancelled cooperatively, with a live process and no completion, past the stated window
+- **When** the run's state is derived
+- **Then** it reports that it is cancelling and that the agent has not answered since a named instant, rather than a bare `cancelling`.
 
-**EPIC-27-S29 — a child that ignores SIGTERM is escalated, not abandoned**
-- **Given** a fake agent that ignores SIGTERM
-- **When** the run is cancelled
-- **Then** the grace expires, SIGKILL follows, the process is gone, and the escalation is recorded.
+**EPIC-27-S29 — the way out is named where the wait is shown**
+- **Given** a run in that waiting state
+- **When** any surface shows it — the UI, `deflow status`, the API
+- **Then** each names forceful cancel as the operator's next move, in the same words.
 
-**EPIC-27-S30 — `cancelling` is passed through, never rested in**
-- **Given** a cancelled run
-- **When** the bounded cancel window expires
-- **Then** the run is in a terminal state with its outcome recorded, and no run remains `cancelling` indefinitely.
+**EPIC-27-S30 — nothing is escalated behind the operator's back**
+- **Given** a cooperative cancel whose agent never answers
+- **When** any amount of time passes
+- **Then** no signal is ever sent to the process group, the run never becomes forcefully cancelled on its own, and the live processes are still running — EPIC-19-S38's decision, pinned.
 
-**EPIC-27-S31 — a recycled pid is never killed**
-- **Given** a recorded pid whose process start time no longer matches the process now holding that pid
-- **When** the cancel sweep runs
-- **Then** that process is not signalled, and the mismatch is reported.
+**EPIC-27-S31 — what is still running is named**
+- **Given** a parked cooperative cancel with two live processes
+- **When** the operator reads the run
+- **Then** both are named by pid and node, in the ledger and on the surface, without recourse to `ps`.
 
-**EPIC-27-S32 — what survived is named**
-- **Given** a cancel that cannot terminate one descendant
-- **When** it completes
-- **Then** the ledger and the caller both carry the pid and the reason, and the run's state does not claim a clean end.
+**EPIC-27-S32 — the forceful ladder is untouched**
+- **Given** a run cancelled with `mode: "forceful"`
+- **When** the ladder runs
+- **Then** it ends the run and empties the process group exactly as it does today, and a survivor is still reported rather than claimed dead.
 
-**EPIC-27-S33 — a daemon shutting down does not orphan its children**
-- **Given** a daemon with a run in flight
-- **When** the daemon is asked to stop
-- **Then** it terminates the trees it spawned before exiting, and records anything it could not.
+**EPIC-27-S33 — a run that was never cancelled says nothing new**
+- **Given** a running run with no cancel requested
+- **When** its state is derived
+- **Then** no waiting copy appears anywhere.
 
 ## KAR-27.7 — Pause, resume and stop, from the run surface (added 2026-08-25)
 
@@ -219,3 +219,47 @@
 - **Given** a test that boots a daemon against a shared data dir
 - **When** the test ends
 - **Then** the file does not name that daemon.
+
+## KAR-27.9 — The cooperative rung exists outside the test suite (added 2026-08-25)
+
+**EPIC-27-S41 — a cooperative cancel reaches the agent**
+- **Given** a run on a route whose transport can carry a cooperative stop
+- **When** the run is cancelled cooperatively
+- **Then** the agent is asked over the protocol, the turn ends with a flushed transcript, the run completes, and no signal was sent to the process group.
+
+**EPIC-27-S42 — a route that cannot carry one refuses rather than waits**
+- **Given** a run on a route with no channel for a cooperative stop
+- **When** a cooperative cancel is requested
+- **Then** it is refused at the point of request, naming forceful as the available ladder, and no `run.cancel.requested` is appended.
+
+**EPIC-27-S43 — the CLI and the API agree about which ladders a run supports**
+- **Given** the same run
+- **When** the capability is read from each
+- **Then** both answer identically, because both read the one fact the route carries.
+
+**EPIC-27-S44 — the transcript is readable afterwards**
+- **Given** a cooperatively cancelled run
+- **When** its output is read after the cancel completes
+- **Then** the transcript is present and complete to the point the agent stopped — the reason this ladder exists.
+
+## KAR-27.10 — A daemon that exits does not orphan the processes it spawned (added 2026-08-25)
+
+**EPIC-27-S45 — stopping the daemon stops its children**
+- **Given** a daemon with a run in flight and a live agent child
+- **When** the daemon is asked to stop
+- **Then** the child's tree is terminated before the daemon exits, and no descendant is left reparented to PID 1.
+
+**EPIC-27-S46 — what could not be terminated is recorded before exit**
+- **Given** a child that survives the shutdown ladder
+- **When** the daemon exits
+- **Then** its pid, node and the reason are in the ledger, written before the process ends.
+
+**EPIC-27-S47 — a daemon that is SIGKILLed is covered by the next boot**
+- **Given** a daemon killed outright, leaving a live child
+- **When** the next daemon boots
+- **Then** it attributes and reports the survivor rather than ignoring it.
+
+**EPIC-27-S48 — nothing unattributable is killed**
+- **Given** an unrelated process that resembles an agent
+- **When** the shutdown ladder runs
+- **Then** it is not signalled, because it cannot be positively attributed to this daemon's runs.
