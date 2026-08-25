@@ -109,3 +109,42 @@
 - **Given** a pre-execution turn that exits 1 with empty stderr after emitting a rate-limit frame on stdout
 - **When** the node failure is recorded
 - **Then** the failure evidence includes the persisted stdout tail, and the ledger message names the vendor's stated cause rather than an empty string.
+
+## KAR-27.4 — The live-turn strip's facts run together (added 2026-08-25)
+
+**EPIC-27-S21 — an undefined token is a red test, not a screenshot**
+- **Given** a component in `packages/web/src` referencing a CSS custom property the stylesheet does not define
+- **When** the web token check runs
+- **Then** it fails, naming the file, the line and the undefined property — and it passes once every referenced property is one `theme.css` declares.
+
+**EPIC-27-S22 — the strip's facts do not touch**
+- **Given** the workflow view rendering the activity strip for a framing turn with two tool calls
+- **When** the strip's computed styles are read
+- **Then** the gutter between its items is non-zero, and the rendered text separates node name, attempt, elapsed, time-since-last-output and each call rather than running them together.
+
+**EPIC-27-S23 — the strip still behaves exactly as KAR-27.3 left it**
+- **Given** the strip mounted on a run with a turn in flight
+- **When** it polls, holds chunks, shows the tail of the calls, and is then unmounted
+- **Then** the poll interval, the held-chunk bound, the shown-call count and the teardown are unchanged, and the four facts it names are the same four.
+
+## KAR-27.5 — While a run is framing, the workflows screen keeps its panels (added 2026-08-25)
+
+**EPIC-27-S24 — a framing run still has both panels**
+- **Given** the workflows screen open on a run whose feed is hydrated, with no plan nodes and no open gate
+- **When** the view renders
+- **Then** the plan panel and the tasks panel are both in the DOM, each showing an empty state naming what it waits for, and no section is rendered at zero height.
+
+**EPIC-27-S25 — the strip lives in the plan panel, not instead of it**
+- **Given** a framing turn in flight
+- **When** the activity strip renders
+- **Then** it appears as the plan panel's header line; **and when** the turn concludes, the strip is gone and the plan panel remains.
+
+**EPIC-27-S26 — one canvas, one subscription, across every plan state**
+- **Given** a run moving from no-plan to planned without a reload
+- **When** the plan arrives
+- **Then** exactly one graph canvas and one run subscription have existed throughout, and the graph fills the panel already on screen rather than a panel that appears with it.
+
+**EPIC-27-S27 — the screen fills its viewport in every run state**
+- **Given** the workflows screen at a fixed viewport height, on a framing run, a planned run and a run at an open gate
+- **When** each renders
+- **Then** the final row reaches the bottom of the available height and the right column reaches the right edge modulo the shell's padding, with no stretched empty track between sections — and the gate, when open, is still the page's one raised card above the panels.
