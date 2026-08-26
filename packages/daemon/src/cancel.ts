@@ -82,7 +82,15 @@ export type CancelOutcome =
   /** The pid now belongs to something else. **Nothing was signalled.** */
   | 'pid-reused'
   /** Signalled through the whole ladder and something is still running. */
-  | 'survived';
+  | 'survived'
+  /**
+   * KAR-27.9 — rung 1 was climbed, the agent did not answer, and the ladder was
+   * **not** climbed because this caller forbade it (`escalateUnanswered:
+   * false`). Nothing was signalled, and the attempt is deliberately *not*
+   * concluded: a node marked cancelled whose process is still writing to the
+   * worktree is the wedge in reverse.
+   */
+  | 'unanswered';
 
 export interface CancelReport {
   readonly outcome: CancelOutcome;
@@ -118,6 +126,21 @@ export interface CancelPorts {
    * difference between a flushed tail and a deadlock.
    */
   readonly protocolCancel?: (key: ProcessKey) => Promise<boolean>;
+  /**
+   * KAR-27.9 — whether an unanswered rung 1 may climb to rung 2.
+   *
+   * `true`, the default, is §11.1's ladder: the operator's kill switch presses
+   * one control and it stops the tree, giving rung 1 its whole chance first.
+   *
+   * `false` is the **drive's** cooperative cancel, and it is where EPIC-19-S38
+   * and EPIC-27-S30 live: *"a cooperative cancel is never promoted to a
+   * forceful one"*, because an automatic escalation makes `--force` decorative
+   * and truncates the transcript the operator cancelled the run to read. On
+   * that path an agent that ignores the protocol leaves `'unanswered'`,
+   * nothing is signalled, the attempt keeps its `live` row, and KAR-27.6's
+   * bounded, reported wait is what the operator sees.
+   */
+  readonly escalateUnanswered?: boolean;
   /** Defaults to the POSIX group signal. Injected only to exercise the
    * kill-did-not-take path, never to avoid a real signal in a real test. */
   readonly killTree?: (pid: number, signal: NodeJS.Signals) => unknown;
@@ -137,6 +160,13 @@ const cancelLog = log.child({ mod: 'cancel' });
  * terminal event is what lets the next `decide()` reclaim the node's locks and
  * stop treating it as in flight, and a cancel that gave up quietly would leave
  * the repository write lock held by a node nobody is waiting for.
+ *
+ * KAR-27.9 adds the one exception, and it is the mirror image of that argument:
+ * `'unanswered'` means the agent was asked, said nothing, and **nothing was
+ * signalled**, so the attempt is demonstrably still running. Concluding it there
+ * would let `decide()` reclaim the repository lock and admit a second node into
+ * a worktree the first one is still writing to — which is worse than the wedge
+ * AC8 is about, because it is silent.
  */
 export async function cancelNode(command: CancelNode, ports: CancelPorts): Promise<CancelReport> {
   const { db } = ports;
@@ -153,6 +183,19 @@ export async function cancelNode(command: CancelNode, ports: CancelPorts): Promi
   const startedAt = ports.clock.now();
 
   const report = await stop(command, ports, key, row, startedAt);
+
+  if (report.outcome === 'unanswered') {
+    // See the header: the attempt is still running and nothing was signalled,
+    // so it keeps its `live` row and its locks, and KAR-27.6's bounded wait is
+    // what the operator reads. The `protocol` stage is already on the log, so
+    // "we asked" is a durable fact rather than a log line.
+    cancelLog.warn(
+      { runId: command.runId, nodeId: command.node, attempt: command.attempt, pid: report.pid },
+      `${command.node} did not answer the protocol cancel; nothing was signalled and the ` +
+        'attempt is still running',
+    );
+    return report;
+  }
 
   // The node's terminal record, then the rows its attempt left open.
   appendEvents(db, [
@@ -197,6 +240,17 @@ async function stop(
     if (await ports.protocolCancel(key)) {
       if (row !== undefined) markProcess(db, key, 'exited');
       return { outcome: 'flushed', survivors: [], pid: row?.pid ?? null, pgid: row?.pgid ?? null };
+    }
+
+    // KAR-27.9 / EPIC-27-S30 — for a caller that forbids escalation, cooperative
+    // is rung 1 and rung 1 alone. The row is re-read rather than trusted: the
+    // `await` above may have been the whole length of a turn, and an attempt
+    // that ended while we waited is `not-running` below, not a survivor.
+    if (ports.escalateUnanswered === false) {
+      const now = readProcess(db, key);
+      if (now !== undefined && now.state === 'live') {
+        return { outcome: 'unanswered', survivors: [], pid: now.pid, pgid: now.pgid };
+      }
     }
   }
 

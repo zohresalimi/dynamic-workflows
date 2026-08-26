@@ -68,8 +68,17 @@ const OWN_DURATION = /\b(?:[A-Z][A-Z0-9_]*_MS|[A-Za-z_]*(?:RETRY|BACKOFF|DELAY)[
  * may go unanswered before the run *says so*. It schedules nothing and retries
  * nothing — cooperative is never promoted (EPIC-19-S38) — and the drive's only
  * use of it is a comparison before appending a `run.cancel.unanswered`.
+ *
+ * `STOP_ASK_SETTLE_MS` (KAR-27.9) is how long `settle()` will wait, **once, at
+ * shutdown**, for a protocol cancel that has already been sent to be answered.
+ * A bound on a wait rather than a policy about attempts: when it elapses nothing
+ * is re-sent and nothing is signalled — the daemon stops waiting on an agent
+ * that is not answering, which is the opposite of trying again.
  */
-const NOT_A_RETRY_POLICY: ReadonlySet<string> = new Set(['COOPERATIVE_CANCEL_UNANSWERED_MS']);
+const NOT_A_RETRY_POLICY: ReadonlySet<string> = new Set([
+  'COOPERATIVE_CANCEL_UNANSWERED_MS',
+  'STOP_ASK_SETTLE_MS',
+]);
 
 /** A ceiling of its own: a comparison against a count of attempts or tries. */
 const OWN_CEILING = /\b(?:max|MAX)[_A-Za-z]*(?:Attempts|ATTEMPTS|Retries|RETRIES|Tries|TRIES)\b/;

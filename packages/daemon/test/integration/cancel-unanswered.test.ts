@@ -5,13 +5,20 @@
  * `cancelling` and the run sat there indefinitely while the agent child kept
  * working. The request carried no `mode`, so it took the default —
  * `cooperative` — whose first rung is `ports.protocolCancel`, and production
- * wires that port nowhere. So the cancel asked nobody anything, `finishCancels`
+ * wired that port nowhere. So the cancel asked nobody anything, `finishCancels`
  * reached `if (live.length > 0) continue`, and the run parked with no bound, no
  * report, and nothing anywhere naming `--force` as the way out.
  *
- * **What this file pins, and what it deliberately does not.** It does not build
- * the missing rung — that is KAR-27.9 — and it must not let anybody "fix" the
- * park by escalating: EPIC-19-S38's decision is that a cooperative cancel is
+ * **Still true after KAR-27.9.** The rung exists now, and this file's driver is
+ * deliberately built without a `liveTurns` port — which is the state of every
+ * attempt this daemon holds no connection for: one left by a previous daemon
+ * life, or one whose agent simply ignores `session/cancel`. Both still park, so
+ * everything below is still the behaviour, not a description of a state that has
+ * gone away.
+ *
+ * **What this file pins, and what it deliberately does not.** It does not
+ * exercise the rung — that is `./cancel-protocol-rung.test.ts` — and it must not
+ * let anybody "fix" the park by escalating: EPIC-19-S38's decision is that a cooperative cancel is
  * never promoted, because an automatic escalation makes `--force` decorative
  * and truncates the transcript the operator cancelled the run in order to read.
  * So the kill runner is injected and the assertion is that **cooperative never

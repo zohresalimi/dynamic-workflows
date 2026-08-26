@@ -33,9 +33,8 @@
  * The verb on the wire is `cancel`; the word on the button is Stop. They are
  * separated here rather than conflated because the button is *one* of the two
  * ladders `cancel` offers, and calling it Cancel would suggest it were the
- * whole verb. `RUN_CONTROL_STOP_MODE` states which ladder, always — see the
- * story's own note on why a Stop that took the endpoint's default would appear
- * to do nothing until KAR-27.9 builds the cooperative rung.
+ * whole verb. `RUN_CONTROL_STOP_MODE` states which ladder, always — see its own
+ * note for which one, and why the button states it rather than defaulting.
  */
 import type { CancelMode, RunControlVerb, RunStatus } from '@DeFlow/core';
 import { planRunControl, RUN_CONTROL_ENDED } from '@DeFlow/core';
@@ -53,10 +52,14 @@ export const RUN_CONTROL_VERB: Readonly<Record<RunControlAction, RunControlVerb>
 /**
  * The ladder the Stop button takes, stated and never defaulted (AC1).
  *
- * `POST /api/runs/:id/cancel` defaults to `cooperative`, whose first rung —
- * asking the agent over the protocol — is wired nowhere in production until
- * KAR-27.9. A Stop button that took the default would therefore appear to do
- * nothing, which is the worst behaviour a stop control can have.
+ * Forceful, and still forceful now that KAR-27.9 has built the cooperative
+ * rung. The reason has changed rather than gone away. It used to be that the
+ * endpoint's default asked nobody anything, so a Stop that took it appeared to
+ * do nothing. Now the default *is* delivered — on a route that can carry it —
+ * and it ends when the agent chooses to answer, which is not what a button
+ * labelled Stop promises. The cooperative ladder stays where an operator can
+ * choose it deliberately, having read that it is the one that keeps the
+ * transcript; a button does not make that choice for them.
  */
 export const RUN_CONTROL_STOP_MODE: CancelMode = 'forceful';
 

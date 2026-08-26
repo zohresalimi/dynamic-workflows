@@ -1,23 +1,32 @@
 /**
  * KAR-27.6 — the one place a parked cooperative cancel is described.
  *
- * **The defect.** A cooperative cancel's first rung is asking the agent to stop
- * over the protocol, through `ports.protocolCancel`. Production wires that port
- * nowhere — the daemon builds its kill runner with `{db, clock, epoch, mode,
- * by}` and no `protocolCancel` at all — so on a real run the default cancel asks
- * nobody anything, the drive's `finishCancels` reaches `if (live.length > 0)
- * continue`, and the run parks. Observed twice on 2026-08-25: the API answered
+ * **The defect this was written for.** A cooperative cancel's first rung is
+ * asking the agent to stop over the protocol, through `ports.protocolCancel`.
+ * Production wired that port nowhere, so on a real run the default cancel asked
+ * nobody anything, the drive's `finishCancels` reached `if (live.length > 0)
+ * continue`, and the run parked. Observed twice on 2026-08-25: the API answered
  * `cancelling`, both runs sat there indefinitely, and the agent child outlived
  * the cancel, outlived the daemon, and ran until it was killed by hand.
+ *
+ * **What KAR-27.9 changed, and what it did not.** The rung exists now: the drive
+ * asks the live ACP turn, and a run whose agent answers ends with a flushed
+ * transcript and no signal. Two things keep this module honest rather than
+ * obsolete. An agent can still *ignore* `session/cancel`, and a daemon that has
+ * restarted holds no connection to ask through — both leave exactly the wait
+ * described here, with the same processes to name and the same way out. What can
+ * no longer happen is a cooperative cancel of a run on a route with **no**
+ * channel: `cancelLaddersFor` refuses that at the point of request, so it never
+ * becomes a `cancelling` this module has to describe.
  *
  * **What this module does, and what it must never do.** It makes the wait
  * *honest*: bounded by a named constant, reported on the log, and described in
  * words that name the way out. It does not escalate and nothing built on it may
  * — a cooperative cancel is never promoted to a forceful one, because an
  * automatic escalation would make `--force` decorative and would truncate the
- * transcript the operator cancelled the run in order to read (EPIC-19-S38).
- * Building the missing rung is KAR-27.9's; this is what makes the gap legible
- * in the meantime.
+ * transcript the operator cancelled the run in order to read (EPIC-19-S38,
+ * EPIC-27-S30). That rule survived KAR-27.9 unchanged: the rung it built asks,
+ * and never signals.
  *
  * **One producer, three surfaces.** The sentence lives here and is rendered by
  * the run list, `deflow status`, `deflow cancel` and the run view — for the
@@ -47,11 +56,11 @@ import type { RunState } from './run-state.ts';
  *
  * A minute, and the reasoning is the shape of the wait rather than a measured
  * distribution. A cooperative cancel that is going to be answered is answered in
- * the seconds it takes an agent to flush a transcript; a cooperative cancel that
- * is *never* going to be answered — which, until KAR-27.9 lands, is every one of
- * them in production — is not more informative at ten minutes than at one. The
- * cost of being early is a line of copy on a run that was about to stop anyway;
- * the cost of being late is the 2026-08-25 incident.
+ * the seconds it takes an agent to flush a transcript; one that is never going
+ * to be answered — an agent ignoring the protocol, or a `process` row left by a
+ * daemon life that is over — is not more informative at ten minutes than at one.
+ * The cost of being early is a line of copy on a run that was about to stop
+ * anyway; the cost of being late is the 2026-08-25 incident.
  */
 export const COOPERATIVE_CANCEL_UNANSWERED_MS = 60_000;
 

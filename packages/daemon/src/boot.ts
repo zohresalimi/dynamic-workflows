@@ -48,6 +48,7 @@ import {
 } from './daemon-file.ts';
 import { resolveDataDir } from './data-dir.ts';
 import {
+  type CooperativeCancelPort,
   createRunDriver,
   type FramingRunner,
   type RunAdvancer,
@@ -197,6 +198,18 @@ export interface BootOptions {
    * operator's own `PATH` and writes into the run's own worktree.
    */
   readonly executeNodes?: RunNodeExecutor | undefined;
+  /**
+   * KAR-27.9 AC1 — the live ACP turns the executor above is holding, so that a
+   * cooperative cancel has a first rung to climb.
+   *
+   * Supplied by the same caller as `executeNodes`, and it has to be **the same
+   * registry that executor fills**: the point of it is that the drive can turn a
+   * `process` row back into the connection somebody is holding, and a second
+   * registry would leave it asking one nobody registers in. Omitted means no
+   * cooperative cancel is ever delivered, which is what every daemon did before
+   * this story and what KAR-27.6's bounded wait describes.
+   */
+  readonly liveTurns?: CooperativeCancelPort | undefined;
   /** AC7 — called for every `run.stalled` the driver appends, so `deflow up`
    * can print the one line the operator reads. */
   readonly onStalled?: ((runId: RunId, report: StallReport) => void) | undefined;
@@ -423,6 +436,9 @@ export async function boot(options: BootOptions = {}): Promise<Booted> {
     ...(options.runFraming === undefined ? {} : { runFraming: options.runFraming }),
     ...(options.advanceRun === undefined ? {} : { advanceRun: options.advanceRun }),
     ...(options.executeNodes === undefined ? {} : { executeNodes: options.executeNodes }),
+    // KAR-27.9 AC1 — the other half of `executeNodes`: the executor holds the
+    // ACP connections, and this is what lets the loop ask one of them to stop.
+    ...(options.liveTurns === undefined ? {} : { liveTurns: options.liveTurns }),
     ...(options.onStalled === undefined ? {} : { onStalled: options.onStalled }),
   });
   const tickIntervalMs = options.tickIntervalMs ?? TICK_INTERVAL_MS;

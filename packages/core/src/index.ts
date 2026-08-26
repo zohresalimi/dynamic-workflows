@@ -130,6 +130,15 @@ export {
   resolveContextBudget,
   SegmentContentHashMismatch,
 } from './build-packet.ts';
+// KAR-27.9 — which ladders a run supports, read from the route it runs on, so
+// the API's refusal and every client's capability are one fact.
+export type { CancelLadders } from './cancel-ladders.ts';
+export {
+  cancelLaddersFor,
+  cancelModeAvailable,
+  cooperativeCancelUnavailable,
+  PROTOCOL_CANCEL_ROUTES,
+} from './cancel-ladders.ts';
 // KAR-19.6 AC2 — the one refusal the cancel route and `deflow cancel` both
 // speak when a mode is not one of the two ladders.
 export { cancelModeList, invalidCancelModeMessage } from './cancel-mode.ts';

@@ -110,6 +110,10 @@ try {
     runFraming: chain.runFraming,
     advanceRun: chain.advanceRun,
     executeNodes: execution.executeNodes,
+    // KAR-27.9 AC1 — the same registry that executor fills. Without this line
+    // the loop has no way to turn a `process` row back into the ACP connection
+    // somebody is holding, and a cooperative cancel asks nobody anything.
+    liveTurns: execution.liveTurns,
     // KAR-26.2 AC1 — the machine, told to `boot()` the way `up.ts` tells it:
     // the roots admission resolves against, and the probe that fills the
     // manifest the picker and the settings rows read. Both are built from this

@@ -50,7 +50,7 @@ import {
   EVENT_CURRENT_VERSIONS,
   noProgress,
 } from '@DeFlow/core';
-import type { AppendOptions, NodeWakeRow, ProcessRow } from '@DeFlow/ledger';
+import type { AppendOptions, NodeWakeRow, ProcessKey, ProcessRow } from '@DeFlow/ledger';
 import {
   appendEvents,
   clearWake,
@@ -64,6 +64,7 @@ import {
   runHeadSeq,
   scheduleWake,
 } from '@DeFlow/ledger';
+import { cancelNode } from './cancel.ts';
 import { FRAMING_WAKE_REASON } from './intake/intake.ts';
 import { type KillRunOutcome, killRun } from './kill-switch.ts';
 import { log } from './logging.ts';
@@ -252,6 +253,33 @@ export interface DriverPorts {
    * nodes failing at the same instant take twenty consecutive draws.
    */
   readonly random?: Random | undefined;
+  /**
+   * KAR-27.9 AC1 — the live ACP turns this daemon is holding, so that a
+   * cooperative cancel has a rung 1 to climb.
+   *
+   * A port, and for the same reason `runFraming` and `executeNodes` are ports:
+   * the connection belongs to whoever spawned the child, and this file owns no
+   * process. Omitted means no cooperative cancel is ever delivered, which is
+   * every daemon before this story and is exactly the park KAR-27.6 describes —
+   * so it is still a legible state rather than a silent one.
+   */
+  readonly liveTurns?: CooperativeCancelPort | undefined;
+}
+
+/**
+ * KAR-27.9 — what the drive asks of the daemon's live turns.
+ *
+ * Two questions rather than one, and the first is load-bearing. `holds` is what
+ * keeps the ask honest: an attempt this daemon has no connection for — one left
+ * by a previous daemon life, say — cannot be asked anything, and calling
+ * `cancelNode` for it would conclude a node whose process is still running.
+ */
+export interface CooperativeCancelPort {
+  /** Whether this daemon is holding a live connection for `key`. */
+  holds(key: ProcessKey): boolean;
+  /** Rung 1: send `session/cancel`, and resolve with whether the agent answered
+   * — which is only after it has flushed. */
+  protocolCancel(key: ProcessKey): Promise<boolean>;
 }
 
 /** What the driver asks of the kill switch: one run, one mode, the outcome. */
@@ -272,6 +300,19 @@ export interface TickReport {
   /** KAR-19.4 — runs this tick drove `executeRun` over. */
   readonly executed: readonly RunId[];
 }
+
+/**
+ * KAR-27.9 — how long `settle()` will wait on a protocol cancel that has not
+ * been answered.
+ *
+ * A bound rather than a wait, because the thing being waited on is an agent that
+ * has already been asked to stop and has not: a shutdown that blocked on one
+ * would be the automatic escalation's mirror image, a daemon that cannot exit
+ * because a child will not. Five seconds is the same order as `TERM_GRACE_MS`
+ * and for the same reason — it is how long a CLI writing out a transcript
+ * plausibly needs.
+ */
+export const STOP_ASK_SETTLE_MS = 5_000;
 
 export interface RunDriver {
   /** One tick. Never throws for a run's own failure — see `tick`. */
@@ -326,6 +367,18 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
    * own completion.
    */
   const executingTurns = new Set<Promise<void>>();
+  /**
+   * KAR-27.9 — the attempts this process has already asked to stop over the
+   * protocol, and the asks themselves.
+   *
+   * The drive ticks once a second and a cooperative cancel that is being
+   * answered is still `cancelling` on the next one; without this, an agent
+   * flushing a transcript would be sent sixty `session/cancel` notifications
+   * while it did so. Per-process by construction, like every other set here: a
+   * daemon that restarts holds no connections, so it has nothing to remember.
+   */
+  const askedToStop = new Set<string>();
+  const stopAsks = new Set<Promise<void>>();
   /**
    * KAR-19.4 — the head this run's log was at when the executor last returned
    * without ending it.
@@ -585,12 +638,20 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
           (row) => row.runId === runId && row.state === 'live',
         );
         if (live.length > 0) {
-          // KAR-27.6 AC1, AC4 — the line above is where a cooperative cancel
-          // parks, and before this story it parked *silently*: no bound, no
-          // report, and nothing on any surface naming `--force` as the way out.
-          // The wait is not shortened here and nothing is signalled; it is
-          // written down.
-          if (mode === 'cooperative') reportUnansweredCancel(runId, state, live, now);
+          if (mode === 'cooperative') {
+            // KAR-27.9 AC1 — rung 1, and the line whose absence was the whole
+            // defect: the agent is *asked*. Launched rather than awaited,
+            // because the answer arrives only after the agent has flushed its
+            // transcript and that is not a wait a one-second tick may hold.
+            askAgentsToStop(runId, live);
+            // KAR-27.6 AC1, AC4 — and if it never answers, the line above is
+            // still where a cooperative cancel parks. The wait is not shortened
+            // here and nothing is signalled; it is written down, and `--force`
+            // is named. Kept rather than removed because this state is still
+            // reachable: an agent can ignore `session/cancel`, and a daemon
+            // that restarted holds no connection to ask through.
+            reportUnansweredCancel(runId, state, live, now);
+          }
           continue;
         }
 
@@ -603,6 +664,77 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
     }
 
     return finished;
+  }
+
+  /**
+   * KAR-27.9 AC1 — the cooperative ladder's first rung, delivered from the loop.
+   *
+   * **Why this is here and not in `cancelNode`'s caller list.** The operator's
+   * cancel arrives at the API, which appends `run.cancel.requested` and returns;
+   * the connection to the agent is held by whichever `runAcpNode` call is
+   * mid-turn, three modules away. This is the only place that has both — the
+   * ledger's `process` rows and the daemon's live turns — which is why the rung
+   * had no production caller for four epics.
+   *
+   * Three rules, and every one of them is an acceptance criterion somewhere:
+   *
+   * - **Only an attempt this daemon is actually holding is asked.** A `live` row
+   *   left by a previous daemon life has no connection behind it; running the
+   *   ladder for it would conclude a node whose process is still writing.
+   * - **Asked once.** The registry is idempotent per turn and this set is the
+   *   belt to that braces: a flush that takes ten seconds must not cost ten
+   *   `session/cancel`s.
+   * - **`escalateUnanswered: false`.** EPIC-19-S38 and EPIC-27-S30: a
+   *   cooperative cancel is never promoted, so an agent that says nothing leaves
+   *   the attempt running and the wait reported.
+   */
+  function askAgentsToStop(runId: RunId, live: readonly ProcessRow[]): void {
+    const turns = ports.liveTurns;
+    if (turns === undefined) return;
+
+    for (const row of live) {
+      const key: ProcessKey = { runId, nodeId: row.nodeId, attempt: row.attempt };
+      const id = `${runId}/${row.nodeId}/${String(row.attempt)}`;
+      if (askedToStop.has(id) || !turns.holds(key)) continue;
+      askedToStop.add(id);
+
+      driver.info(
+        { runId, nodeId: row.nodeId, attempt: row.attempt, pid: row.pid },
+        `asking ${row.nodeId} to stop over the protocol`,
+      );
+      const ask = cancelNode(
+        {
+          kind: 'CancelNode',
+          runId,
+          node: row.nodeId as NodeId,
+          attempt: row.attempt,
+          mode: 'cooperative',
+        },
+        {
+          db: ports.db,
+          clock: ports.clock,
+          epoch: ports.epoch,
+          by: 'user',
+          protocolCancel: (asked) => turns.protocolCancel(asked),
+          escalateUnanswered: false,
+        },
+      )
+        .then((report) => {
+          // The ask *failed to reach anybody*, so let a later tick try again —
+          // a turn that was disposed between `holds` and the ask is the case,
+          // and it is a race rather than a refusal.
+          if (report.outcome === 'unanswered') askedToStop.delete(id);
+        })
+        .catch((error: unknown) => {
+          askedToStop.delete(id);
+          driver.error(
+            { runId, nodeId: row.nodeId, err: error },
+            `the protocol cancel of ${row.nodeId} failed; nothing was signalled`,
+          );
+        })
+        .finally(() => stopAsks.delete(ask));
+      stopAsks.add(ask);
+    }
   }
 
   /**
@@ -880,6 +1012,26 @@ export function createRunDriver(ports: DriverPorts): RunDriver {
       // successor was still writing.
       while (executingTurns.size > 0) {
         await Promise.all(executingTurns);
+      }
+      // KAR-27.9 — and the protocol cancels, for the same reason: the
+      // `node.cancelled` an answered rung 1 appends is written *after* the
+      // agent has flushed, and closing the ledger underneath that would lose
+      // the terminal record of an attempt that really did stop.
+      //
+      // Not a loop: an ask that never resolves is an agent that never answered,
+      // and a shutdown that waited on one would be the automatic escalation's
+      // mirror image — a daemon that cannot exit because a child will not.
+      //
+      // Guarded on the set being non-empty rather than raced unconditionally,
+      // because `clock.sleep` on the system clock is a real timer that holds the
+      // event loop open: a daemon with nothing to wait for would take five
+      // seconds to exit, every time, to wait for a set that is almost always
+      // empty.
+      if (stopAsks.size > 0) {
+        await Promise.race([
+          Promise.all(stopAsks).then(() => undefined),
+          ports.clock.sleep(STOP_ASK_SETTLE_MS),
+        ]);
       }
     },
     get inFlight(): number {

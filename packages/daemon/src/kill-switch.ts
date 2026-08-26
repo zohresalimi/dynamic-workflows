@@ -149,7 +149,13 @@ export async function killRun(runId: RunId, ports: KillRunPorts): Promise<KillRu
     return { outcome: 'survived', attempts, survivors };
   }
 
-  if (attempts.some((report) => report.outcome === 'pid-reused')) {
+  // KAR-27.9 — `unanswered` is unreachable from here, because the switch never
+  // forbids escalation. It is handled rather than defaulted anyway: to an
+  // operator it means exactly what `pid-reused` means — **nothing was
+  // signalled** — and an answer of `stopped` is one they would stop looking at.
+  const nothingSignalled = (outcome: CancelReport['outcome']): boolean =>
+    outcome === 'pid-reused' || outcome === 'unanswered';
+  if (attempts.some((report) => nothingSignalled(report.outcome))) {
     killLog.warn(
       { runId, attempts: attempts.map((report) => report.outcome) },
       'the kill switch refused to signal a reused pid; nothing was stopped for that attempt',

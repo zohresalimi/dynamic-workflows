@@ -116,6 +116,7 @@ import { join } from 'node:path';
 import process from 'node:process';
 import { createEffectRunner } from '../effects/durable.ts';
 import { sqliteLedgerSink } from '../exec/ledger-sink.ts';
+import { createLiveTurns, type LiveTurns } from '../exec/live-turns.ts';
 import type { PerformableNodeType } from '../exec/performable.ts';
 import { sqliteProcessRegistry } from '../exec/process-registry.ts';
 import type { ExecContext, NodePerformer } from '../exec/run-executor.ts';
@@ -148,6 +149,21 @@ const tokenizer = o200kTokenizer();
 /** A pre-execution run's whole log fits far inside this. */
 const EVENT_PAGE = 5_000;
 
+/**
+ * KAR-27.9 AC1 — `RunExecution`, plus the registry the drive needs to reach
+ * this daemon's live turns.
+ *
+ * Returned rather than hidden because the two halves of the cooperative rung sit
+ * on opposite sides of `boot()`: this file's performer fills the registry, and
+ * `drive.ts` empties it when an operator asks. The composition root is the only
+ * place that sees both, so it is the only place that can join them — and a root
+ * that built a second registry would leave the drive asking one nobody
+ * registers in, which is indistinguishable from the bug this story closes.
+ */
+export interface LiveRunExecution extends RunExecution {
+  readonly liveTurns: LiveTurns;
+}
+
 export interface LiveExecutionOptions {
   /** The daemon's data directory: run directories, blobs and the gate output. */
   readonly dataDir: string;
@@ -157,6 +173,22 @@ export interface LiveExecutionOptions {
   readonly providerRoots: readonly string[];
   /** DeFlowd's environment, as `buildChildEnv()`'s **base**, never as a child's. */
   readonly daemonEnv: NodeJS.ProcessEnv;
+  /**
+   * KAR-27.9 AC1 — where an ACP turn registers itself so that the loop can ask
+   * it to stop.
+   *
+   * Supplied by the composition root rather than created here, because the
+   * *drive* is the other end of it: the operator's cancel arrives at the API,
+   * the drive reads the run's `process` rows a tick later, and this registry is
+   * the only thing that can turn one of those rows back into the connection
+   * somebody is holding. One per daemon life, exactly like the ledger.
+   *
+   * Optional so that a spec, `deflow replay` or a probe can build an execution
+   * without one. A turn that registers nowhere simply cannot be asked — which
+   * is the state every daemon was in before this story, and which KAR-27.6's
+   * bounded wait already describes honestly.
+   */
+  readonly liveTurns?: LiveTurns | undefined;
 }
 
 /** What one node attempt needs that its command does not carry. */
@@ -621,7 +653,24 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
                 resolved: { provider: spec.id, path: binaryPath },
                 worktree: provisioned.path,
               });
-              return await runAcpNode(
+              // KAR-27.9 AC1 — the cooperative rung's production wiring, and
+              // the whole of what was missing.
+              //
+              // Aborting this controller is `session/cancel` on the connection
+              // this turn is holding; the loop reaches it through the registry
+              // below, keyed by the same `(runId, nodeId, attempt)` the
+              // `process` row is written under. The turn is registered *before*
+              // it is awaited and disposed of in the `finally`, so a cancel that
+              // arrives at any point during the turn finds it and one that
+              // arrives afterwards finds nothing rather than a dead signal.
+              //
+              // The ACP arm only. `runShimTurn` above spawns the vendor CLI for
+              // one turn over a one-way `stream-json` stdout: there is no
+              // request channel to carry a polite stop, which is why
+              // `cancelLaddersFor` refuses the cooperative ladder for that route
+              // at the point of request instead of pretending here.
+              const stopping = new AbortController();
+              const running = runAcpNode(
                 {
                   runId: ctx.runId,
                   nodeId: command.node,
@@ -656,6 +705,15 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
                   processes,
                   scopeAudit,
                   captureEvidence,
+                  signal: stopping.signal,
+                  // EPIC-19-S38, EPIC-27-S30 — an unanswered cooperative cancel
+                  // is **not** promoted to a signal five seconds later. Without
+                  // this line, wiring the signal above would have quietly made
+                  // every cooperative cancel forceful, which is the one
+                  // behaviour `--force` exists to be chosen deliberately. The
+                  // honest answer to an agent that ignores the protocol is
+                  // KAR-27.6's bounded, reported wait.
+                  escalateUnansweredCancel: false,
                   // KAR-23.10 — the node's three mediation fronts. `runAcpNode`
                   // has always taken these as data and no daemon call site
                   // supplied them, so `session/request_permission` came back
@@ -686,6 +744,26 @@ function liveAgentPerformer(options: LiveExecutionOptions, cwd: string): NodePer
                   }),
                 },
               );
+
+              const dispose = options.liveTurns?.register(
+                { runId: ctx.runId, nodeId: command.node, attempt: command.attempt },
+                {
+                  cancel: () => stopping.abort(),
+                  // `true` only for a turn that ended *because* it was
+                  // cancelled: that is what makes the difference between a
+                  // flushed transcript and an attempt that ended some other way
+                  // while the operator happened to be asking.
+                  cancelled: running.then(
+                    (outcome) => outcome.status === 'cancelled',
+                    () => false,
+                  ),
+                },
+              );
+              try {
+                return await running;
+              } finally {
+                dispose?.();
+              }
             })();
 
       if (outcome.status === 'failed') {
@@ -758,9 +836,18 @@ function evaluatedNodeOf(node: PlanNode, state: RunState): NodeId {
  * Stateless per turn, exactly as `run-execution.ts` requires: everything below
  * is re-derived from `(ledger, run, machine)` on every dispatch, so a second
  * daemon picks a run up with nothing inherited from the first.
+ *
+ * The one exception is `liveTurns`, and it is an exception for a reason that
+ * proves the rule: it holds *connections*, which die with this process by
+ * definition. It is returned as well as used so that the composition root can
+ * hand the same registry to `boot()` — the executor fills it and the drive
+ * empties it, and two of them would mean the loop asking a registry nobody
+ * registers in (KAR-27.9 AC1).
  */
-export function createLiveRunExecution(options: LiveExecutionOptions): RunExecution {
-  return createRunExecution({
+export function createLiveRunExecution(options: LiveExecutionOptions): LiveRunExecution {
+  const liveTurns = options.liveTurns ?? createLiveTurns();
+  const bound: LiveExecutionOptions = { ...options, liveTurns };
+  const execution = createRunExecution({
     resolve: async ({
       runId,
       db,
@@ -784,8 +871,8 @@ export function createLiveRunExecution(options: LiveExecutionOptions): RunExecut
         // than two lists that happen to agree today. Adding a performer without
         // widening the constant does not compile, and vice versa.
         perform: byNodeType({
-          agent: liveAgentPerformer(options, cwd),
-          tool: toolNodePerformer(options, cwd),
+          agent: liveAgentPerformer(bound, cwd),
+          tool: toolNodePerformer(bound, cwd),
           gate: gateNodePerformer({
             dataDir: options.dataDir,
             env: options.daemonEnv,
@@ -831,4 +918,5 @@ export function createLiveRunExecution(options: LiveExecutionOptions): RunExecut
       };
     },
   });
+  return { ...execution, liveTurns };
 }
