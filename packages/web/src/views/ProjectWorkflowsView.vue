@@ -322,8 +322,9 @@ const startedAt = computed<string | null>(
  */
 const runStatus = computed<RunStatus | null>(() => {
   if (currentRun.value === null) return null;
-  const live =
-    run.runId === currentRun.value ? (run.runState?.status ?? run.lifecycleStatus) : null;
+  // KAR-28.7 — one derivation, the store's, rather than this view choosing
+  // between a scrubbed snapshot and a live fold for itself.
+  const live = run.runId === currentRun.value ? (run.statusView?.status ?? null) : null;
   return live ?? history.value.find((row) => row.runId === currentRun.value)?.status ?? null;
 });
 

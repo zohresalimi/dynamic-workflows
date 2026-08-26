@@ -56,13 +56,7 @@
  * scrubbed position renders from `runState`, and the seven projections re-base
  * at the snapshot's `seq` and fold the tail forward from there.
  */
-import {
-  type Event,
-  type EventKind,
-  RUN_STATUS_LABELS,
-  type RunState,
-  type RunStatus,
-} from '@DeFlow/core';
+import { type Event, type EventKind, type RunState, type RunStatus } from '@DeFlow/core';
 import { defineStore } from 'pinia';
 import { computed, markRaw, type Ref, ref, type ShallowRef, shallowRef } from 'vue';
 import type { ApiClient } from '../api/client.ts';
@@ -115,6 +109,13 @@ import type {
   TimelineSpanVM,
 } from '../ledger/vm.ts';
 import {
+  foldRunStatus,
+  type RunStatusFold,
+  type RunStatusView,
+  runStatusView,
+  runStatusViewOf,
+} from '../lib/run-status.ts';
+import {
   copy,
   copySpan,
   edgeUnchanged,
@@ -122,7 +123,6 @@ import {
   shallowUnchanged,
   spanUnchanged,
 } from './memoise.ts';
-import { RUN_STATUS_BY_KIND } from './useRunListStore.ts';
 
 /**
  * The four counters `../app/leak-assert.ts` prints, and the four candidates
@@ -252,8 +252,14 @@ export const useRunStore = defineStore('run', () => {
    * run list therefore never sees. Before this, a tab that paused a run watched
    * its own pause change nothing on screen, because the only event that says a
    * run is paused was one this fold ignored.
+   *
+   * **KAR-28.7 moved the fold itself into `../lib/run-status.ts`** and made it
+   * total, which is what stops an answered gate leaving this store — and every
+   * surface reading it — on `needs-human` for the rest of the run. What is held
+   * here is that fold's carry: the status, and what the run was doing before it
+   * stopped to ask.
    */
-  const lifecycleStatus = ref<RunStatus | null>(null);
+  const statusFold = ref<RunStatusFold | null>(null);
   const hydratedFromSeq = ref(0);
   /**
    * The smallest `seq` folded since the last hydrate, or `null` for none.
@@ -401,7 +407,7 @@ export const useRunStore = defineStore('run', () => {
     scrubbing = null;
     runId.value = null;
     runState.value = null;
-    lifecycleStatus.value = null;
+    statusFold.value = null;
     for (const name of PROJECTION_NAMES) {
       containers[name].value = modules[name].create();
     }
@@ -431,8 +437,7 @@ export const useRunStore = defineStore('run', () => {
     const lowest = lowestSeqAppliedSinceHydrate.value;
     if (lowest === null || event.seq < lowest) lowestSeqAppliedSinceHydrate.value = event.seq;
     for (const name of ownersOf(event.kind)) bump(name);
-    const lifecycle = RUN_STATUS_BY_KIND[event.kind];
-    if (lifecycle !== undefined) lifecycleStatus.value = lifecycle;
+    statusFold.value = foldRunStatus(statusFold.value, event);
     return true;
   }
 
@@ -557,10 +562,34 @@ export const useRunStore = defineStore('run', () => {
    * mutates in place and the integer beside it is this store's whole change
    * detection.
    */
+  /**
+   * KAR-28.7 AC2 — **the** status of the run this store is open on, and the
+   * sentence beside it. Every surface that draws one reads this.
+   *
+   * Two sources, in one order, and neither is a table this file keeps. A
+   * *scrubbed* tab has a real `RunState` — the daemon's own fold of the
+   * position — and renders exactly what it was handed, which is why that branch
+   * comes first: a tab looking at a moment in the past should say what was true
+   * then. A tab merely *following* a run has no snapshot (that is what
+   * `runState` being `scrubTo`'s alone means), so it renders the fold in
+   * `../lib/run-status.ts` together with the pre-execution turns the tenth
+   * projection has already folded — which is what carries KAR-27.3's composed
+   * *"planner — running · attempt 1 of 3 · since …"* to the frame instead of a
+   * bare `planning`.
+   */
+  const statusView = computed<RunStatusView | null>(() => {
+    const scrubbed = runState.value;
+    if (scrubbed !== null) return runStatusView(scrubbed);
+    const fold = statusFold.value;
+    if (fold === null) return null;
+    void versions.liveTurn.value;
+    return runStatusViewOf(fold.status, liveTurn.value.turns);
+  });
+
+  const lifecycleStatus = computed<RunStatus | null>(() => statusView.value?.status ?? null);
+
   /** The word the daemon uses for that status, never a second vocabulary. */
-  const lifecycleLabel = computed<string | null>(() =>
-    lifecycleStatus.value === null ? null : RUN_STATUS_LABELS[lifecycleStatus.value],
-  );
+  const lifecycleLabel = computed<string | null>(() => statusView.value?.label ?? null);
 
   const submittedTask = computed<SubmittedTask | null>(() => {
     void versions.submission.value;
@@ -632,6 +661,7 @@ export const useRunStore = defineStore('run', () => {
     seq,
     applied,
     runState,
+    statusView,
     lifecycleStatus,
     lifecycleLabel,
     hydratedFromSeq,
