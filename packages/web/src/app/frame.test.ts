@@ -265,7 +265,15 @@ suite('EPIC-24-S14 — the rail and the topbar, on the landing route', () => {
     // so a tab that merely opened a run and is watching it has none — which is
     // exactly the tab this pill exists for. Nothing is scrubbed here on
     // purpose: the assertion is that a *live* run reaches the frame.
+    //
+    // KAR-28.3 — mounted on the run's own plan view rather than on the landing
+    // route. The pill has always been a claim about the run *this page is
+    // about*, and until KAR-28.3 the bar drew it on every route that had no
+    // run header of its own, `/projects` included. What AC5 asks for is
+    // unchanged and every assertion below is the one KAR-24.4 wrote; only the
+    // route it is asked on is now a route that shows a run.
     shell = await mountShell({
+      at: { name: 'run-plan', params: { projectId: PROJECT_ID, runId: RUN_ID } },
       client: createClient({
         baseUrl: 'http://127.0.0.1:7777/api',
         fetch: frameDaemon({}),
@@ -579,7 +587,11 @@ suite('EPIC-24-S16 — nothing the old shell did is lost', () => {
   });
 
   it('keeps the provider banner and the task banner, folded from the run’s own ledger', async () => {
+    // KAR-28.3 — on the run's own plan view, for the reason S14's pill spec
+    // above states: the two banners describe the run this page is about, and
+    // the bar no longer offers them on a route that is about no run.
     shell = await mountShell({
+      at: { name: 'run-plan', params: { projectId: PROJECT_ID, runId: RUN_ID } },
       client: createClient({
         baseUrl: 'http://127.0.0.1:7777/api',
         fetch: frameDaemon({}),

@@ -1,19 +1,22 @@
 <script setup lang="ts">
 /**
- * KAR-22.3 AC2, AC3, KAR-24.7 AC3, AC4 — the task board: the plan, as a list
- * of work, in direction C's row density.
+ * KAR-22.3 AC2, AC3, KAR-24.7 AC3, AC4, KAR-28.2 AC1, AC2, AC3, AC6 — the
+ * agent list: the run's work, as a list of who is doing what.
  *
- * Verifies: EPIC-22-S36, EPIC-22-S37, EPIC-22-S38 · AC2, AC3
+ * Verifies: EPIC-22-S36, EPIC-22-S37, EPIC-22-S38, EPIC-28-S07, EPIC-28-S08,
+ * EPIC-28-S09, EPIC-28-S10 · AC1, AC2, AC3, AC6
  *
  * This is the surface the owner asked for in as many words — *"the list of
  * tasks the run created with the step names and which model is handling each"*
- * — and the thing to understand about it is that **it is not a second model of
- * the run**. Its rows arrive as a prop, from `../app/useNodeBodies.ts`, which
- * is the same object the plan graph draws and in the same tick. There is no
- * array in this file, no store read, no `if` about an event kind, and no
- * formatting of a duration or a price: an elapsed time
- * formatted here and formatted again in `node-body.ts` would be two answers to
- * one question, and the board would read `3.0 s` beside a node reading `3 s`.
+ * — and KAR-28.2 promoted it from the column beside the canvas to the thing the
+ * screen shows. The thing to understand about it is unchanged: **it is not a
+ * second model of the run**. Its rows arrive as a prop, derived by
+ * `../lib/agent-rows.ts` from the very object `../app/useNodeBodies.ts` hands
+ * the plan graph, in the same tick. There is no array in this file, no store
+ * read, no `if` about an event kind, and no formatting of a duration or a price:
+ * an elapsed time formatted here and formatted again in `node-body.ts` would be
+ * two answers to one question, and the list would read `3.0 s` beside a node
+ * reading `3 s`.
  *
  * ## Why every row carries eight facts and not three
  *
@@ -25,6 +28,25 @@
  * not said yet, the cell says so in words (`no model reported`), because an
  * empty cell reads as "there is nothing to say" and that is a different claim.
  *
+ * ## A retried step is more than one row (KAR-28.2 AC2)
+ *
+ * One row per **attempt**, oldest first, each labelled `— try #n`, and the
+ * failed one still sitting there after the successful one. The row that is the
+ * node's current attempt is the one carrying the shared body, so it is also the
+ * one the graph is drawing; the rows above it are attempts that are over and
+ * read their state, duration and money off their own span. A single-attempt
+ * step gets no label at all, because `try #1` on a step that ran once reads as a
+ * warning about a step that is perfectly fine.
+ *
+ * ## The hierarchy is drawn, never invented (AC1, EPIC-28-S09)
+ *
+ * A fan-out's children are real nodes named after the node that spawned them,
+ * and `agentRows` is where that is read. Here it is two things: an indent, which
+ * is for the eye, and a visually-hidden `sub-agent of …` prefix, which is for
+ * everyone the indent does not reach — the same discipline as "colour is never
+ * the only carrier". A run with no fan-out gets neither, because there is
+ * nothing to say and a column of empty hierarchy chrome says something false.
+ *
  * ## Colour is never the only carrier of state
  *
  * The state cell is `StateChip`, the one component every surface renders a run
@@ -32,43 +54,92 @@
  * turning any of the three off (docs/12 §9.2, WCAG 1.4.1). The row's tint is an
  * additional cue layered on top of a row that already reads without it.
  *
+ * ## The output control opens the route, and renders nothing (AC3)
+ *
+ * Every row links to `run-node-output`, which is EPIC-17's own surface for a
+ * node's transcript. A link rather than a click handler, so it can be opened in
+ * a tab and handed to somebody; `test/one-transcript-surface.test.ts` is what
+ * stops this file growing a transcript renderer of its own.
+ *
+ * ## The step name opens the docked inspector (KAR-28.4 AC4)
+ *
+ * The two controls on a row are the two questions about a node, and they are
+ * deliberately not the same control: `Output` is *"what did it print"* and
+ * goes to the transcript route, the step name is *"what was it given, what did
+ * it cost, why did it fail"* and opens `../NodeInspector.vue` beside the list.
+ * AC4 exists because the inspector used to be reachable only by pressing a
+ * graph node, and on this screen KAR-28.2 put the graph behind a toggle — so
+ * the panel had no way in at all on the surface the operator actually watches.
+ *
  * ## KAR-24.7 — the row this file draws is not a third padding scale
  *
  * `RunListView` restyled the run table to direction C's row density — a
  * ~5px-vertical row on a fixed column grid — and the gallery's "dense table
  * row" composite (KAR-24.3 AC1) shows the same bordered box: `--edge-strong`,
  * `--radius-lg`, a sticky mono header row, rows separated by `--edge`. This
- * file spends exactly that language rather than inventing a second one for
- * eight columns instead of four: the type scale, the padding rhythm and the
+ * file spends exactly that language rather than inventing a second one for nine
+ * columns instead of four: the type scale, the padding rhythm and the
  * hover/selected treatment below are read straight off those two, not
  * re-derived. `UiChip` carries the row count next to the title, which is the
  * same "small tinted label" every crumb and pill on this screen already is.
  */
-import type { NodeBodyVM } from './graph/node-body.ts';
+import { computed } from 'vue';
+import { RouterLink } from 'vue-router';
+import type { AgentRowVM } from '../lib/agent-rows.ts';
 import StateChip from './StateChip.vue';
 import { UiChip } from './ui/index.ts';
 
-defineProps<{
+const props = defineProps<{
   /**
-   * The shared bodies, in the plan's own order.
+   * The rows, in the list's own order — the plan's, with each node's attempts
+   * oldest first and each fan-out's children directly under it.
    *
-   * A prop rather than a `useNodeBodies()` call of its own, so the board can be
-   * mounted beside a collapsed graph, and so the thing this component renders
-   * is visibly the thing its caller renders (KAR-22.3 AC3).
+   * A prop rather than a derivation of its own, so the list can be mounted
+   * beside a hidden graph, and so the thing this component renders is visibly
+   * the thing its caller renders (KAR-22.3 AC3, KAR-28.2 AC4).
    */
-  readonly bodies: readonly NodeBodyVM[];
+  readonly rows: readonly AgentRowVM[];
+  /** The run these rows belong to — the output link's route needs both ids. */
+  readonly projectId: string;
+  readonly runId: string;
   /** The node the rest of the application has selected, if any. */
   readonly selected?: string | null;
 }>();
 
-const emit = defineEmits<{ select: [id: string] }>();
+const emit = defineEmits<{
+  select: [id: string];
+  /**
+   * KAR-28.4 AC4 — open the docked inspector on this row's node.
+   *
+   * Separate from `select` because they are different asks: selecting a row is
+   * "this is the node I am looking at", opening the inspector is "show me what
+   * it was given and what it produced". An emit rather than a store call for
+   * the same reason `select` is one — this component reads no store, so the
+   * screen it sits on stays the one place that decides what a row press does.
+   */
+  inspect: [id: string];
+}>();
+
+/**
+ * Whether this run has a hierarchy at all.
+ *
+ * Read off the rows rather than passed in, and used only to withhold chrome: a
+ * flat run must not pay an indent column for a nesting it does not have.
+ */
+const nested = computed(() => props.rows.some((row) => row.depth > 0));
 </script>
 
 <template>
-  <section class="board" aria-labelledby="DeFlow-board-title" data-task-board>
+  <section
+    class="board"
+    aria-labelledby="DeFlow-board-title"
+    data-task-board
+    data-agent-list
+    :data-agent-nested="String(nested)"
+  >
     <div class="board__head">
-      <h2 id="DeFlow-board-title" class="board__title">Tasks</h2>
-      <UiChip variant="neutral" mono data-board-count>{{ bodies.length }}</UiChip>
+      <h2 id="DeFlow-board-title" class="board__title">Agents</h2>
+      <UiChip variant="neutral" mono data-board-count>{{ rows.length }}</UiChip>
     </div>
 
     <!--
@@ -78,9 +149,9 @@ const emit = defineEmits<{ select: [id: string] }>();
       answerable at all.
     -->
     <!--
-      KAR-27.5 AC1 — what the board says before there is anything to say.
+      KAR-27.5 AC1 — what the list says before there is anything to say.
 
-      Eight column headers over no rows is not an empty state: it reads exactly
+      Nine column headers over no rows is not an empty state: it reads exactly
       the same whether the plan has not compiled yet or the load failed, and the
       operator has no way to tell those apart. The sentence names the one that
       is true, and names what will fill the columns when it changes.
@@ -89,9 +160,9 @@ const emit = defineEmits<{ select: [id: string] }>();
       describe rows and there are none — an accessible table with a header row
       and an empty body is a promise the markup does not keep.
     -->
-    <div v-if="bodies.length === 0" class="board__frame board__frame--empty">
+    <div v-if="rows.length === 0" class="board__frame board__frame--empty">
       <p class="board__empty" data-board-empty>
-        Nothing scheduled yet. Tasks appear here — with their agent, permission level, elapsed time
+        Nothing scheduled yet. Agents appear here — with their model, permission level, elapsed time
         and cost — once the plan compiles.
       </p>
     </div>
@@ -109,37 +180,84 @@ const emit = defineEmits<{ select: [id: string] }>();
               <th scope="col">Permission</th>
               <th scope="col">Elapsed</th>
               <th scope="col">Cost</th>
+              <th scope="col">Output</th>
             </tr>
           </thead>
           <tbody>
             <tr
-              v-for="body in bodies"
-              :key="body.id"
+              v-for="row in rows"
+              :key="row.key"
               class="board__row"
-              :data-board-row="body.id"
-              :data-state="body.state"
-              :data-selected="String(body.id === selected)"
-              @click="emit('select', body.id)"
+              :data-agent-row="row.key"
+              :data-agent-node="row.nodeId"
+              :data-agent-attempt="row.attempt"
+              :data-agent-depth="row.depth"
+              :data-agent-parent="row.parentId ?? undefined"
+              :data-board-row="row.current ? row.nodeId : undefined"
+              :data-state="row.state"
+              :data-selected="String(row.nodeId === selected)"
+              @click="emit('select', row.nodeId)"
             >
-              <th scope="row" class="board__step">
-                <button type="button" class="board__open" :data-board-open="body.id">
-                  <span data-board-title>{{ body.title }}</span>
+              <th scope="row" class="board__step" :style="{ '--board-depth': String(row.depth) }">
+                <span v-if="row.depth > 0" class="board__nest" aria-hidden="true">↳</span>
+                <!--
+                  KAR-28.4 AC4 — the step name opens the inspector on this
+                  node, which is how the panel is reachable on a screen where
+                  the canvas is behind the `Agents | Graph` toggle and there is
+                  no node to press. `@click.stop` so the row's own selection
+                  handler does not fire as well: `inspectNodeById` selects the
+                  node anyway, and two handlers agreeing is one too many.
+                -->
+                <button
+                  type="button"
+                  class="board__open"
+                  :data-board-open="row.nodeId"
+                  @click.stop="emit('inspect', row.nodeId)"
+                >
+                  <!--
+                    The indent, for everyone the indent does not reach. It names
+                    the node that spawned this one, which is the fact the
+                    indentation is drawing.
+                  -->
+                  <span v-if="row.parentId !== null" class="board__hidden"
+                    >sub-agent of {{ row.parentId }}:
+                  </span>
+                  <span data-board-title>{{ row.title }}</span>
                 </button>
               </th>
-              <td class="board__mono" data-board-type>{{ body.type }}</td>
+              <td class="board__mono" data-board-type>{{ row.type }}</td>
               <td class="board__state" data-board-state>
                 <!--
                   The one component every surface renders a state through, so
-                  the board and the node body cannot describe one node two
+                  the list and the node body cannot describe one node two
                   ways.
                 -->
-                <StateChip :state="body.state" />
+                <StateChip :state="row.state" />
               </td>
-              <td class="board__mono" data-board-provider>{{ body.provider }}</td>
-              <td class="board__mono" data-board-model>{{ body.model }}</td>
-              <td data-board-permission>{{ body.permission }}</td>
-              <td class="board__figure" data-board-elapsed>{{ body.elapsed }}</td>
-              <td class="board__figure" data-board-cost>{{ body.cost }}</td>
+              <td class="board__mono" data-board-provider>{{ row.provider }}</td>
+              <td class="board__mono" data-board-model>{{ row.model }}</td>
+              <td data-board-permission>{{ row.permission }}</td>
+              <td class="board__figure" data-board-elapsed>{{ row.elapsed }}</td>
+              <td class="board__figure" data-board-cost>{{ row.cost }}</td>
+              <td class="board__output">
+                <!--
+                  EPIC-17's own route for a node's transcript. `@click.stop` so
+                  opening the output is not also a selection of the row it sits
+                  in — two things happening on one press is how an operator
+                  loses the node they were reading.
+                -->
+                <RouterLink
+                  class="board__output-link"
+                  :data-board-output="row.nodeId"
+                  :to="{
+                    name: 'run-node-output',
+                    params: { projectId, runId, nodeId: row.nodeId },
+                  }"
+                  @click.stop
+                >
+                  Output
+                </RouterLink>
+              </td>
             </tr>
           </tbody>
         </table>
@@ -171,7 +289,7 @@ const emit = defineEmits<{ select: [id: string] }>();
 /*
  * The bordered box direction C's row density lives in — the same shape
  * `RunListView`'s `.run-list__table` and the gallery's `.gallery__table`
- * composite use, not a third one drawn for eight columns (KAR-24.7 AC4).
+ * composite use, not a third one drawn for nine columns (KAR-24.7 AC4).
  */
 .board__frame {
   min-height: 0;
@@ -227,6 +345,32 @@ const emit = defineEmits<{ select: [id: string] }>();
   white-space: nowrap;
 }
 
+/* The hierarchy, for the eye: one step of indent per level of nesting, on the
+   cell that identifies the row. `--board-depth` is `0` on a flat run, so a run
+   with no fan-out pays nothing for one (KAR-28.2 AC1). */
+.board__step {
+  padding-left: calc(8px + var(--board-depth, 0) * 14px);
+}
+
+.board__nest {
+  color: var(--ink-faint);
+  margin-right: 4px; /* geometry — the caret's own gutter */
+}
+
+/* The sentence the indent is drawing, for a reader who cannot see an indent.
+   Not `display: none`, which would take it out of the accessibility tree too. */
+.board__hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
 .board__row + .board__row td,
 .board__row + .board__row .board__step {
   border-top: 1px solid var(--edge);
@@ -268,7 +412,7 @@ const emit = defineEmits<{ select: [id: string] }>();
 /*
  * System law 3 — selection is hueless. This used to be a 10% mix of
  * `--state-running`, which meant a *selected* row and a *running* row were the
- * same green: the board had two vocabularies painted in one colour, and the
+ * same green: the list had two vocabularies painted in one colour, and the
  * row's own left border was already saying which state it was in.
  * `--select-tint` is the application's one selection ground.
  */
@@ -298,5 +442,15 @@ const emit = defineEmits<{ select: [id: string] }>();
   font-size: var(--text-xs);
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
+}
+
+.board__output-link {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--ink-muted);
+}
+
+.board__output-link:hover {
+  color: var(--ink);
 }
 </style>

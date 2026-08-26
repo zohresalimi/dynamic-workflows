@@ -13,7 +13,13 @@
  */
 import { expect, it, describe as suite } from 'vitest';
 import type { IoChunkLine } from './node-output.ts';
-import { holdChunks, NO_ACTIVITY, turnActivity } from './turn-activity.ts';
+import {
+  ARGUMENT_LIMIT,
+  holdChunks,
+  NO_ACTIVITY,
+  type TurnToolRow,
+  turnActivity,
+} from './turn-activity.ts';
 
 const TS = 1_787_000_000_000;
 
@@ -33,6 +39,26 @@ const toolUse = (name: string): unknown => ({
   name,
   input: {},
 });
+
+/** A `tool_use` block with the input the vendor actually sent. */
+const called = (name: string, input: Record<string, unknown>, id = `tu_${name}`): unknown => ({
+  type: 'tool_use',
+  id,
+  name,
+  input,
+});
+
+/** A `user` frame — the shape a `tool_result` arrives in. */
+const answer = (blocks: readonly unknown[]): string =>
+  `${JSON.stringify({ type: 'user', message: { content: blocks } })}\n`;
+
+const toolResult = (block: Record<string, unknown>): unknown => ({
+  type: 'tool_result',
+  ...block,
+});
+
+const toolRows = (events: readonly { readonly kind: string }[]): TurnToolRow[] =>
+  events.filter((event): event is TurnToolRow => event.kind === 'tool');
 
 suite('turnActivity — the tool calls an operator wanted to see', () => {
   it('names each tool exactly as the frame spelled it', () => {
@@ -125,6 +151,161 @@ suite('turnActivity — the other two things the strip renders', () => {
 
   it('answers nothing at all for a turn that has produced nothing yet', () => {
     expect(turnActivity([])).toEqual(NO_ACTIVITY);
+  });
+});
+
+/**
+ * KAR-28.1 — the feed's rows: one per event, oldest first, the vendor's bytes.
+ *
+ * Verifies: EPIC-28-S01, EPIC-28-S02, EPIC-28-S03, EPIC-28-S06 · AC2–AC5
+ */
+suite('EPIC-28-S01 — a tool call names what it acted on', () => {
+  it('renders the identifying argument beside the name, as the frame spelled it', () => {
+    const events = turnActivity([
+      chunk(1, assistant([called('Read', { file_path: 'src/api.ts' })])),
+      chunk(2, assistant([called('Bash', { command: 'pnpm test', description: 'Run the suite' })])),
+      chunk(3, assistant([called('mcp__linear__get_issue', { id: 'MET-1013' })])),
+    ]).events;
+
+    expect(toolRows(events).map((row) => [row.name, row.target])).toEqual([
+      ['Read', 'src/api.ts'],
+      ['Bash', 'pnpm test'],
+      ['mcp__linear__get_issue', 'MET-1013'],
+    ]);
+  });
+
+  it('truncates a long argument for width rather than re-wording it', () => {
+    const command = `pnpm vitest run ${'a/very/long/path.test.ts '.repeat(40)}`;
+
+    const [row] = toolRows(
+      turnActivity([chunk(1, assistant([called('Bash', { command })]))]).events,
+    );
+
+    expect(row?.target).toHaveLength(ARGUMENT_LIMIT);
+    expect(row?.target?.endsWith('…')).toBe(true);
+    // The kept part is the frame's own bytes, unaltered.
+    expect(command.startsWith((row?.target ?? '').slice(0, -1))).toBe(true);
+  });
+
+  it('leaves the argument absent rather than inventing one for a call with no input', () => {
+    const events = turnActivity([chunk(1, assistant([called('TodoWrite', {})]))]).events;
+
+    expect(toolRows(events)[0]?.target).toBeNull();
+  });
+
+  it('ignores a non-string argument rather than stringifying an object at the operator', () => {
+    const events = turnActivity([
+      chunk(1, assistant([called('Task', { subagent_type: { deep: true } })])),
+    ]).events;
+
+    expect(toolRows(events)[0]?.target).toBeNull();
+  });
+});
+
+suite("EPIC-28-S02 — a tool call's result is folded into its row", () => {
+  it("carries the vendor's own summary and reads success as success", () => {
+    const events = turnActivity([
+      chunk(1, assistant([called('Read', { file_path: 'src/api.ts' }, 'tu_1')])),
+      chunk(
+        2,
+        answer([toolResult({ tool_use_id: 'tu_1', content: '     1\texport const a = 1' })]),
+      ),
+    ]).events;
+
+    expect(toolRows(events)[0]?.result).toEqual({
+      ok: true,
+      summary: '1\texport const a = 1',
+    });
+  });
+
+  it('reads a failure as a failure, still in the vendor’s own words', () => {
+    const events = turnActivity([
+      chunk(1, assistant([called('Bash', { command: 'pnpm lint' }, 'tu_2')])),
+      chunk(
+        2,
+        answer([
+          toolResult({
+            tool_use_id: 'tu_2',
+            is_error: true,
+            content: [{ type: 'text', text: 'exit code 1' }],
+          }),
+        ]),
+      ),
+    ]).events;
+
+    expect(toolRows(events)[0]?.result).toEqual({ ok: false, summary: 'exit code 1' });
+  });
+
+  it('shows the call alone when the result cannot be read, and reports no error', () => {
+    const activity = turnActivity([
+      chunk(1, assistant([called('Read', { file_path: 'a.ts' }, 'tu_3')])),
+      // No `tool_use_id`: nothing here can be attached to a call without guessing.
+      chunk(2, answer([toolResult({ content: 'something' })])),
+      // A shape this build has no reading for: an id and nothing legible.
+      chunk(3, answer([toolResult({ tool_use_id: 'tu_3', content: [{ type: 'image' }] })])),
+    ]).events;
+
+    expect(toolRows(activity)).toHaveLength(1);
+    expect(toolRows(activity)[0]?.result).toBeNull();
+    // Nothing anywhere turned the unreadable frames into an error row.
+    expect(activity.map((event) => event.kind)).toEqual(['tool']);
+  });
+
+  it('attaches each result to the call it answers, not to the newest one', () => {
+    const events = turnActivity([
+      chunk(1, assistant([called('Read', { file_path: 'a.ts' }, 'tu_a')])),
+      chunk(2, assistant([called('Read', { file_path: 'b.ts' }, 'tu_b')])),
+      chunk(3, answer([toolResult({ tool_use_id: 'tu_b', content: 'b read' })])),
+      chunk(4, answer([toolResult({ tool_use_id: 'tu_a', content: 'a read' })])),
+    ]).events;
+
+    expect(toolRows(events).map((row) => row.result?.summary)).toEqual(['a read', 'b read']);
+  });
+});
+
+suite("EPIC-28-S03 — the agent's own words are on screen", () => {
+  it('renders text between two calls as its own row, in the order it was emitted', () => {
+    const events = turnActivity([
+      chunk(1, assistant([{ type: 'text', text: 'Reading the repository' }])),
+      chunk(2, assistant([called('Read', { file_path: 'src/api.ts' })])),
+      chunk(3, assistant([{ type: 'text', text: 'Now checking Linear' }])),
+      chunk(4, assistant([called('mcp__linear__get_issue', { id: 'MET-1013' })])),
+    ]).events;
+
+    expect(events.map((event) => event.kind)).toEqual(['text', 'tool', 'text', 'tool']);
+    expect(events.flatMap((event) => (event.kind === 'text' ? [event.text] : []))).toEqual([
+      'Reading the repository',
+      'Now checking Linear',
+    ]);
+  });
+
+  it('gives every row a key of its own, so a list can be drawn from them', () => {
+    const events = turnActivity([
+      chunk(1, assistant([called('Read', { file_path: 'a.ts' }), { type: 'text', text: 'done' }])),
+    ]).events;
+
+    expect(new Set(events.map((event) => event.key)).size).toBe(events.length);
+    expect(events).toHaveLength(2);
+  });
+});
+
+suite('EPIC-28-S06 — an unreadable frame makes the feed quieter, never broken', () => {
+  it('skips a block in a dialect this build cannot read and keeps its neighbours', () => {
+    const events = turnActivity([
+      chunk(1, assistant([called('Read', { file_path: 'a.ts' })])),
+      chunk(2, assistant([{ type: 'thinking', thinking: 'a dialect nothing here parses' }])),
+      chunk(3, `${JSON.stringify({ type: 'stream_event', event: { kind: 'unknown' } })}\n`),
+      chunk(4, assistant([called('Bash', { command: 'pnpm test' })])),
+    ]).events;
+
+    expect(events.map((event) => event.kind)).toEqual(['tool', 'tool']);
+    expect(toolRows(events).map((row) => row.name)).toEqual(['Read', 'Bash']);
+  });
+
+  it('drops whitespace-only prose rather than drawing an empty row', () => {
+    const events = turnActivity([chunk(1, assistant([{ type: 'text', text: '   \n  ' }]))]).events;
+
+    expect(events).toEqual([]);
   });
 });
 

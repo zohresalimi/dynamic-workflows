@@ -25,6 +25,7 @@
  * ninth domain status fails the build here.
  */
 import type { NodeStatus, RunStatus } from '@DeFlow/core';
+import type { SpanOutcome } from '../ledger/vm.ts';
 
 /**
  * The seven states F10.1 names, in the order a run moves through them.
@@ -128,4 +129,26 @@ export const RUN_STATUS_DISPLAY: Record<RunStatus, DisplayState> = {
   cancelling: 'blocked',
   completed: 'passed',
   aborted: 'abandoned',
+};
+
+/**
+ * KAR-28.2 — and once more for an **attempt**, which is what a timeline span is
+ * (`../ledger/projections/timeline.ts`).
+ *
+ * The agent list renders a retried step as one row per attempt, and the rows
+ * for the attempts that are over have no `NodeStatus` to read: the plan
+ * projection keeps one status per *node*, and that status describes the latest
+ * attempt only. What a superseded attempt has is its span's `outcome`, so this
+ * is the third and last table that turns a domain word into a display state.
+ *
+ * The three answers are deliberately the ones `NODE_STATUS_DISPLAY` gives for
+ * the terminal statuses that produce them — `completed → passed`,
+ * `failed → failed`, `cancelled → abandoned` — so a node and its own last
+ * attempt cannot be painted two colours on one screen. Total over
+ * `SpanOutcome`: a fourth way for an attempt to end is a compile error here.
+ */
+export const SPAN_OUTCOME_DISPLAY: Record<SpanOutcome, DisplayState> = {
+  passed: 'passed',
+  failed: 'failed',
+  cancelled: 'abandoned',
 };

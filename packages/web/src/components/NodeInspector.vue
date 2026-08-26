@@ -1,8 +1,9 @@
 <script setup lang="ts">
 /**
- * KAR-24.6 — the node inspector, in direction A's language.
+ * KAR-24.6, KAR-28.4 — the node inspector, in direction A's language, docked.
  *
- * Verifies: EPIC-24-S23, EPIC-24-S24, EPIC-24-S25 · AC1, AC2, AC3, AC4, AC5
+ * Verifies: EPIC-24-S23, EPIC-24-S24, EPIC-24-S25, EPIC-28-S17, EPIC-28-S18,
+ * EPIC-28-S19 · AC1, AC2, AC3, AC4, AC5
  *
  * Direction A draws this as a 400px panel docked to the right edge: a header
  * (icon tile, title, mono `nodeId · kind`, status pill) over a tab strip
@@ -43,14 +44,42 @@
  *   silently win the argument. That rule outranks direction A's code block,
  *   so the code block holds the handle and the "derived" note, as before.
  *
- * ## Why the panel is still a `Dialog`, not a docked aside
+ * ## Why this is an `<aside>` and not a `Dialog` — KAR-28.4, reversing KAR-24.6
  *
- * `INSPECTOR_OVERLAY` participates in the `Esc`-closes-topmost-overlay stack
- * and the `CommandJumper` interaction (`../app/keyboard.ts`), and KAR-24.6
- * AC4 keeps both exactly as they were. Only the CSS moved: `.inspector` is
- * still a `DialogContent`, it just now paints flush to the right edge instead
- * of centred, the same way changing a modal's `max-width` was never a
- * behaviour change before this story either.
+ * KAR-24.6 kept the Reka `Dialog` and moved only the CSS, so the panel painted
+ * flush to the right edge *over* a scrim. KAR-26.5's audit then recorded that
+ * scrim as **the largest single visual divergence in its five screenshots**
+ * and deferred it, because an audit story may not change behaviour. KAR-28.4
+ * is where it is allowed to change, and this note is rewritten rather than
+ * left arguing the opposite of the code under it.
+ *
+ * The thing a modal buys is exclusivity, and exclusivity is precisely wrong
+ * here: the question this panel answers — *"what did that agent do"* — is
+ * asked **while watching the list**, so dimming the list to answer it defeats
+ * the reading. Concretely, a modal `DialogContent` does four things, and all
+ * four had to go:
+ *
+ * 1. a `DialogOverlay` scrim over the viewport (AC1: nothing is dimmed);
+ * 2. `hideOthers`, which stamps `aria-hidden="true"` on every other branch of
+ *    the tree, so the rail and the agent list stop existing for a screen
+ *    reader while the panel is up;
+ * 3. `disableOutsidePointerEvents`, which sets `pointer-events: none` on
+ *    `<body>` — the rail is *visible* and dead;
+ * 4. a focus trap, which is the right behaviour for a dialog and the wrong one
+ *    for a panel an operator tabs out of and back into.
+ *
+ * What the Dialog *was* also buying is the a11y contract, and none of it is
+ * given up (AC2): focus moves into the panel on open (the `watch` below),
+ * `Escape` closes it — `INSPECTOR_OVERLAY` is still on the store's overlay
+ * stack, so `../app/keyboard.ts`'s `Esc`-closes-topmost handler still owns the
+ * key and the `CommandJumper` interaction is unchanged — and focus returns to
+ * whatever opened it, which this file now remembers itself instead of letting
+ * Reka's `triggerElement` remember it.
+ *
+ * Being in the layout rather than over it is `App.vue`'s half: the panel is a
+ * third grid column of `.shell`, beside the rail and the view, so opening it
+ * *narrows* the work rather than covering it. That is what "docked" means here
+ * and it is the reason this component's root cannot be portalled.
  *
  * ## Why the tabs cannot hide the sections below them
  *
@@ -75,25 +104,21 @@
  * tab is gone and the reason lives here instead, where the next person to
  * wonder where it went will find it.
  *
+ * KAR-28.4 AC3 re-states that as a rule rather than a note: the panel's
+ * sections are the ones the daemon can feed, **Logs stays out**, and inventing
+ * a level-tagged per-node log line to fill the tab is barred. De-modalising
+ * changed where this panel sits, not what it is allowed to know.
+ * `test/inspector-is-docked.test.ts` is the guard that keeps this paragraph
+ * and the markup agreeing.
+ *
  * The remainder of the original note, for the record: a log
  * stream. `TabsRoot`'s `unmount-on-hide="false"` keeps an inactive tab's
  * markup in the DOM (hidden, not gone), which is what lets every existing
  * `data-field`, `data-prompt-handle` and `data-output` assertion still find
  * its element without the operator having clicked Output first.
  */
-import {
-  DialogContent,
-  DialogDescription,
-  DialogOverlay,
-  DialogPortal,
-  DialogRoot,
-  DialogTitle,
-  TabsContent,
-  TabsList,
-  TabsRoot,
-  TabsTrigger,
-} from 'reka-ui';
-import { computed, ref } from 'vue';
+import { TabsContent, TabsList, TabsRoot, TabsTrigger } from 'reka-ui';
+import { computed, nextTick, ref, watch } from 'vue';
 import { INSPECTOR_OVERLAY } from '../app/ids.ts';
 import { packetKey } from '../ledger/projections/context.ts';
 import {
@@ -114,12 +139,42 @@ import { UiChip, UiIconTile, UiMetaRow, UiSectionLabel, UiStatTile } from './ui/
 const ui = useUiStore();
 const run = useRunStore();
 
-const open = computed({
-  get: () => ui.isOverlayOpen(INSPECTOR_OVERLAY),
-  set: (next: boolean) => {
-    if (next) ui.openOverlay(INSPECTOR_OVERLAY);
-    else ui.closeOverlay(INSPECTOR_OVERLAY);
-  },
+const open = computed(() => ui.isOverlayOpen(INSPECTOR_OVERLAY));
+
+/**
+ * The panel's own root, and the element that opened it (KAR-28.4 AC2).
+ *
+ * A modal `DialogContent` did both of these for free — `FocusScope` pulled
+ * focus in, and Reka remembered the `triggerElement` that was focused when the
+ * content mounted and refocused it on close. Neither survives de-modalising,
+ * and both are the contract rather than the decoration, so this file does them.
+ *
+ * `document.activeElement` is read in the watcher rather than passed in by
+ * whoever opened the panel, because there are three openers — an agent-list
+ * row (AC4), a graph node, and the provenance table's own links — and a prop
+ * threaded through all three would be a fourth thing to keep in step. The
+ * watcher's default `pre` flush runs before the re-render that mounts the
+ * panel, so what it reads is still the control the operator pressed.
+ *
+ * `document.body` is filtered out: `Enter` on a selected graph node opens the
+ * panel with nothing focused, and "restore focus to the body" is a focus reset
+ * dressed up as a restoration.
+ */
+const ID_TITLE = 'DeFlow-inspector-title';
+const panel = ref<HTMLElement | null>(null);
+let opener: HTMLElement | null = null;
+
+watch(open, (isOpen, was) => {
+  if (isOpen === was) return;
+  if (isOpen) {
+    const active = document.activeElement;
+    opener = active instanceof HTMLElement && active !== document.body ? active : null;
+    void nextTick(() => panel.value?.focus());
+    return;
+  }
+  const restore = opener;
+  opener = null;
+  restore?.focus();
 });
 
 /**
@@ -263,590 +318,579 @@ const duration = (ms: number | null): string => (ms === null ? '—' : `${(ms / 
 </script>
 
 <template>
-  <DialogRoot v-model:open="open">
-    <DialogPortal>
-      <DialogOverlay class="inspector__scrim" />
-      <DialogContent
-        class="inspector"
-        data-overlay="inspector"
-        @escape-key-down="(event: Event) => event.preventDefault()"
-      >
-        <template v-if="view !== null">
-          <!-- ── header (AC1) — icon tile, title, mono id · kind, status pill ── -->
-          <header data-inspector-header class="inspector__head">
-            <UiIconTile
-              size="md"
-              :tint="stateVar(headerState)"
-              data-slot="type-glyph"
-              :title="view.header.type ?? undefined"
-            >
-              <component :is="headerGlyph" :size="12" :stroke-width="2" aria-hidden="true" />
-            </UiIconTile>
-            <div class="inspector__identity">
-              <DialogTitle class="inspector__title">{{ view.header.title }}</DialogTitle>
-              <DialogDescription class="inspector__id mono">
-                {{ view.header.id }}
-                · {{ view.header.type ?? 'unknown' }}
-              </DialogDescription>
+  <!--
+    KAR-28.4 AC1, AC2 — a docked `<aside>`, in `App.vue`'s grid rather than in
+    a portal over it. `tabindex="-1"` is what lets focus move *into* the panel
+    on open without stealing a control's tab stop while it is there, and
+    `aria-labelledby` names it with the node it is showing.
+  -->
+  <aside
+    v-if="open"
+    ref="panel"
+    class="inspector"
+    data-overlay="inspector"
+    tabindex="-1"
+    :aria-labelledby="ID_TITLE"
+  >
+    <template v-if="view !== null">
+      <!-- ── header (AC1) — icon tile, title, mono id · kind, status pill ── -->
+      <header data-inspector-header class="inspector__head">
+        <UiIconTile
+          size="md"
+          :tint="stateVar(headerState)"
+          data-slot="type-glyph"
+          :title="view.header.type ?? undefined"
+        >
+          <component :is="headerGlyph" :size="12" :stroke-width="2" aria-hidden="true" />
+        </UiIconTile>
+        <div class="inspector__identity">
+          <h2 :id="ID_TITLE" class="inspector__title">{{ view.header.title }}</h2>
+          <p class="inspector__id mono">
+            {{ view.header.id }}
+            · {{ view.header.type ?? 'unknown' }}
+          </p>
+        </div>
+        <StateChip :state="headerState" />
+
+        <!--
+          AC11's sparkline: a `<path>` whose `d` was generated by
+          `d3-shape`'s `line()`. Vue owns this subtree and nothing else
+          writes into it.
+        -->
+        <svg
+          v-if="spark !== null"
+          data-sparkline
+          class="inspector__spark"
+          :width="SPARK.width"
+          :height="SPARK.height"
+          :viewBox="`0 0 ${SPARK.width} ${SPARK.height}`"
+          role="img"
+          :aria-label="`packet size across ${spark.points.length} attempts`"
+        >
+          <path :d="spark.path" fill="none" stroke="currentColor" stroke-width="1.5" />
+        </svg>
+      </header>
+
+      <p v-if="view.tainted" data-tainted class="inspector__taint">
+        This node read a fact that was later invalidated — see the provenance table.
+      </p>
+
+      <!--
+        KAR-25.7 AC4, AC6 — the canvas stops being a dead end: a node
+        waiting on a human decision offers the daemon's own options here,
+        through the same `GateOptions` `RunGateBanner.vue` and
+        `ApprovalsMenu.vue` mount. Gone the instant `human.responded`
+        closes this node's escalation (AC7) — `openGateForNode` reads the
+        ledger's own fold, never a flag this panel sets on its own POST.
+      -->
+      <section v-if="openGateForNode" class="inspector__gate" data-inspector-gate>
+        <p class="inspector__gate-prompt">{{ openGateForNode.prompt }}</p>
+        <GateOptions
+          v-if="run.runId !== null"
+          :run-id="run.runId"
+          :gate="{ node: openGateForNode.node, options: openGateForNode.options }"
+        />
+      </section>
+
+      <!-- ── the tab strip: output / config / logs (AC1, AC2, AC3) ─────── -->
+      <TabsRoot v-model="activeTab" :unmount-on-hide="false" class="inspector__tabsroot">
+        <TabsList class="inspector__tabstrip" aria-label="Inspector">
+          <TabsTrigger value="output" class="inspector__tab">Output</TabsTrigger>
+          <TabsTrigger value="config" class="inspector__tab">Config</TabsTrigger>
+        </TabsList>
+
+        <div class="inspector__tabbody">
+          <!-- ── output: the 2×2 stat grid, then this attempt's output (AC2) ── -->
+          <TabsContent value="output" data-inspector-tabpanel="output" class="inspector__tabpanel">
+            <div class="inspector__stats">
+              <UiStatTile label="Tokens" :value="view.packet.headerTotal ?? '—'" />
+              <UiStatTile
+                label="Cost"
+                :value="money(attemptRow?.cost.vendorReported ?? attemptRow?.cost.estimated ?? null)"
+              />
+              <UiStatTile label="Duration" :value="duration(attemptRow?.durationMs ?? null)" />
+              <UiStatTile label="Attempts" :value="view.attempts.length" />
             </div>
-            <StateChip :state="headerState" />
+
+            <div data-output="normalised" class="inspector__output-block">
+              <UiSectionLabel>normalised &amp; schema-validated</UiSectionLabel>
+              <pre
+                v-if="view.normalisedOutput !== null"
+                class="inspector__code mono"
+              >{{ JSON.stringify(view.normalisedOutput.output, null, 2) }}</pre>
+              <!--
+                An attempt still running has produced no `NodeResultVM` yet
+                — that is not the same absence as one that finished with
+                nothing, and the caret says which one this is honestly
+                (`data-motion-token`: switched off under reduced motion by
+                theme.css's blanket rule, not by anything named here).
+              -->
+              <p
+                v-else-if="attemptRow?.outcome === 'running'"
+                data-output-live
+                class="inspector__live"
+              >
+                this attempt hasn't finished — output will appear here once it does
+                <span class="inspector__caret" data-motion-token aria-hidden="true" />
+              </p>
+              <p v-else class="inspector__muted">This attempt returned no validated output.</p>
+            </div>
+
+            <div data-output="raw" class="inspector__output-block">
+              <UiSectionLabel>raw</UiSectionLabel>
+              <ul v-if="view.rawOutputHandles.length > 0" class="inspector__evidence">
+                <li
+                  v-for="handle in view.rawOutputHandles"
+                  :key="handle"
+                  data-evidence
+                  class="mono"
+                >
+                  {{ handle }}
+                </li>
+              </ul>
+              <p v-else class="inspector__muted">No raw transcript was recorded.</p>
+            </div>
 
             <!--
-              AC11's sparkline: a `<path>` whose `d` was generated by
-              `d3-shape`'s `line()`. Vue owns this subtree and nothing else
-              writes into it.
+              The validator's own vocabulary, beside the output that failed
+              it. The inspector's job is to point at the field that failed,
+              and a flattened sentence cannot be pointed with.
             -->
-            <svg
-              v-if="spark !== null"
-              data-sparkline
-              class="inspector__spark"
-              :width="SPARK.width"
-              :height="SPARK.height"
-              :viewBox="`0 0 ${SPARK.width} ${SPARK.height}`"
-              role="img"
-              :aria-label="`packet size across ${spark.points.length} attempts`"
-            >
-              <path :d="spark.path" fill="none" stroke="currentColor" stroke-width="1.5" />
-            </svg>
-          </header>
-
-          <p v-if="view.tainted" data-tainted class="inspector__taint">
-            This node read a fact that was later invalidated — see the provenance table.
-          </p>
-
-          <!--
-            KAR-25.7 AC4, AC6 — the canvas stops being a dead end: a node
-            waiting on a human decision offers the daemon's own options here,
-            through the same `GateOptions` `RunGateBanner.vue` and
-            `ApprovalsMenu.vue` mount. Gone the instant `human.responded`
-            closes this node's escalation (AC7) — `openGateForNode` reads the
-            ledger's own fold, never a flag this panel sets on its own POST.
-          -->
-          <section v-if="openGateForNode" class="inspector__gate" data-inspector-gate>
-            <p class="inspector__gate-prompt">{{ openGateForNode.prompt }}</p>
-            <GateOptions
-              v-if="run.runId !== null"
-              :run-id="run.runId"
-              :gate="{ node: openGateForNode.node, options: openGateForNode.options }"
-            />
-          </section>
-
-          <!-- ── the tab strip: output / config / logs (AC1, AC2, AC3) ─────── -->
-          <TabsRoot v-model="activeTab" :unmount-on-hide="false" class="inspector__tabsroot">
-            <TabsList class="inspector__tabstrip" aria-label="Inspector">
-              <TabsTrigger value="output" class="inspector__tab">Output</TabsTrigger>
-              <TabsTrigger value="config" class="inspector__tab">Config</TabsTrigger>
-            </TabsList>
-
-            <div class="inspector__tabbody">
-              <!-- ── output: the 2×2 stat grid, then this attempt's output (AC2) ── -->
-              <TabsContent
-                value="output"
-                data-inspector-tabpanel="output"
-                class="inspector__tabpanel"
-              >
-                <div class="inspector__stats">
-                  <UiStatTile label="Tokens" :value="view.packet.headerTotal ?? '—'" />
-                  <UiStatTile
-                    label="Cost"
-                    :value="money(attemptRow?.cost.vendorReported ?? attemptRow?.cost.estimated ?? null)"
-                  />
-                  <UiStatTile label="Duration" :value="duration(attemptRow?.durationMs ?? null)" />
-                  <UiStatTile label="Attempts" :value="view.attempts.length" />
-                </div>
-
-                <div data-output="normalised" class="inspector__output-block">
-                  <UiSectionLabel>normalised &amp; schema-validated</UiSectionLabel>
-                  <pre
-                    v-if="view.normalisedOutput !== null"
-                    class="inspector__code mono"
-                  >{{ JSON.stringify(view.normalisedOutput.output, null, 2) }}</pre>
-                  <!--
-                    An attempt still running has produced no `NodeResultVM` yet
-                    — that is not the same absence as one that finished with
-                    nothing, and the caret says which one this is honestly
-                    (`data-motion-token`: switched off under reduced motion by
-                    theme.css's blanket rule, not by anything named here).
-                  -->
-                  <p
-                    v-else-if="attemptRow?.outcome === 'running'"
-                    data-output-live
-                    class="inspector__live"
-                  >
-                    this attempt hasn't finished — output will appear here once it does
-                    <span class="inspector__caret" data-motion-token aria-hidden="true" />
-                  </p>
-                  <p v-else class="inspector__muted">This attempt returned no validated output.</p>
-                </div>
-
-                <div data-output="raw" class="inspector__output-block">
-                  <UiSectionLabel>raw</UiSectionLabel>
-                  <ul v-if="view.rawOutputHandles.length > 0" class="inspector__evidence">
-                    <li
-                      v-for="handle in view.rawOutputHandles"
-                      :key="handle"
-                      data-evidence
-                      class="mono"
-                    >
-                      {{ handle }}
-                    </li>
-                  </ul>
-                  <p v-else class="inspector__muted">No raw transcript was recorded.</p>
-                </div>
-
-                <!--
-                  The validator's own vocabulary, beside the output that failed
-                  it. The inspector's job is to point at the field that failed,
-                  and a flattened sentence cannot be pointed with.
-                -->
-                <div v-if="view.schemaErrors !== null" class="inspector__fail">
-                  <p>
-                    did not satisfy <strong data-schema-id>{{ view.schemaErrors.schemaId }}</strong>
-                  </p>
-                  <ul>
-                    <li
-                      v-for="(error, index) in view.schemaErrors.errors"
-                      :key="`${error.instancePath}#${index}`"
-                      data-schema-error
-                    >
-                      <code data-instance-path>{{ error.instancePath }}</code>
-                      <span>{{ error.keyword }}</span>
-                      <span>{{ error.message }}</span>
-                    </li>
-                  </ul>
-                </div>
-              </TabsContent>
-
-              <!-- ── config: runtime & model as UiMetaRows, the prompt as a code block (AC3) ── -->
-              <TabsContent
-                value="config"
-                data-inspector-config
-                data-inspector-tabpanel="config"
-                class="inspector__tabpanel"
-              >
-                <UiMetaRow
-                  v-if="view.header.type !== null"
-                  label="type"
-                  :value="view.header.type"
-                />
-                <UiMetaRow
-                  v-if="view.header.provider !== null"
-                  label="runtime"
-                  :value="view.header.provider"
-                />
-                <UiMetaRow
-                  v-if="view.header.model !== null"
-                  label="model"
-                  :value="view.header.model"
-                />
-                <UiMetaRow
-                  v-if="view.header.worktree !== null"
-                  label="worktree"
-                  :value="view.header.worktree"
-                />
-                <!--
-                  `data-field="path-scopes"` and `data-field="permission"` above
-                  fall through onto `UiMetaRow`'s own root, which also carries
-                  the label — fine for the two assertions that read them, which
-                  ask "is this truthy" and "does this contain src/**", not "is
-                  this exactly one value" (`node-inspector.test.ts`).
-                -->
-                <UiMetaRow
-                  v-if="view.header.pathScopes !== null"
-                  label="path scopes"
-                  data-field="path-scopes"
-                  :value="`write: ${view.header.pathScopes.write.join(', ') || 'nothing'} · read: ${view.header.pathScopes.read.join(', ') || 'nothing'}`"
-                />
-                <UiMetaRow
-                  v-if="view.header.permission !== null"
-                  label="permission"
-                  data-field="permission"
-                  :value="view.header.permission"
-                />
-                <!--
-                  Binary version and sha256 are hand-rolled rather than a third
-                  pair of `UiMetaRow`s: `node-inspector.test.ts` reads each
-                  value in isolation with `toBe`/`toMatch`, and `UiMetaRow`'s
-                  root carries its label text alongside the value — right for
-                  every other row here, wrong for the one assertion that wants
-                  the value alone.
-                -->
-                <div v-if="view.header.binary !== null" class="inspector__config-row">
-                  <span class="inspector__config-label">CLI version</span>
-                  <span class="inspector__config-value mono" data-field="binary-version"
-                    >{{ view.header.binary.version }}</span
-                  >
-                </div>
-                <div v-if="view.header.binary !== null" class="inspector__config-row">
-                  <span class="inspector__config-label">binary sha256</span>
-                  <span class="inspector__config-value mono" data-field="binary-sha256"
-                    >{{ view.header.binary.sha256 }}</span
-                  >
-                </div>
-
-                <div class="inspector__prompt">
-                  <UiSectionLabel>system prompt</UiSectionLabel>
-                  <template v-if="view.packet.status === 'built'">
-                    <!--
-                      The whitespace inside a `<pre>` is content, so the
-                      expression sits flush against both tags.
-                    -->
-                    <pre
-                      v-if="view.packet.promptHandle !== null"
-                      :data-prompt-handle="view.packet.promptHandle"
-                      class="inspector__code mono"
-                    >{{ view.packet.promptHandle }}</pre>
-                    <p data-prompt-derived class="inspector__muted">
-                      The rendered prompt is <em>derived</em> from the manifest above. The
-                      <strong>manifest is authoritative</strong>: if the two ever disagree, the
-                      manifest is what the daemon assembled and sent.
-                    </p>
-                  </template>
-                  <p v-else class="inspector__muted">
-                    No context packet was built for this attempt, so there is no prompt to show.
-                  </p>
-                </div>
-              </TabsContent>
-            </div>
-          </TabsRoot>
-
-          <!-- ── everything below is this application's own diagnostic material,
-               not direction A's tab split — always on screen, per the story's
-               own "diagnosis is scrolling rather than clicking". ─────────── -->
-
-          <!-- ── attempt history (AC1, AC6, AC7) ────────────────────────── -->
-          <section class="inspector__section">
-            <UiSectionLabel as="h3">Attempts</UiSectionLabel>
-
-            <div class="inspector__tabs" role="tablist" aria-label="Attempt">
-              <button
-                v-for="row in view.attempts"
-                :key="row.key"
-                type="button"
-                role="tab"
-                :data-attempt-tab="row.attempt"
-                :aria-selected="row.attempt === attempt"
-                @click="ui.inspectAttempt(row.attempt)"
-              >
-                attempt {{ row.attempt }}
-              </button>
-            </div>
-
-            <table class="inspector__table">
-              <thead>
-                <tr>
-                  <th>attempt</th>
-                  <th>outcome</th>
-                  <th>duration</th>
-                  <th>cost</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr v-for="row in view.attempts" :key="row.key" :data-attempt-row="row.key">
-                  <td>{{ row.attempt }}</td>
-                  <td data-outcome>
-                    <!--
-                      AC7: the transition links to the lifecycle event that made
-                      it, so "why does it say failed" is one click from the
-                      envelope that said so.
-                    -->
-                    <button
-                      v-if="row.endedAtSeq !== null"
-                      type="button"
-                      :data-seq-link="row.endedAtSeq"
-                      @click="ui.selectEvent(row.endedAtSeq)"
-                    >
-                      {{ row.outcome }}
-                    </button>
-                    <span v-else>{{ row.outcome }}</span>
-                    <em v-if="row.failure !== null" data-failure-reason
-                      >{{ row.failure.reason }}</em
-                    >
-                  </td>
-                  <td data-duration>{{ duration(row.durationMs) }}</td>
-                  <td data-cost>
-                    <button
-                      v-if="row.cost.seq > 0"
-                      type="button"
-                      :data-seq-link="row.cost.seq"
-                      @click="ui.selectEvent(row.cost.seq)"
-                    >
-                      {{ money(row.cost.vendorReported ?? row.cost.estimated) }}
-                    </button>
-                    <span v-else>—</span>
-                    <!--
-                      AC10. Named, never a zero: a `0` is a claim the vendor
-                      billed nothing, and nobody measured that.
-                    -->
-                    <small v-if="row.cost.unaccounted.length > 0" data-unaccounted>
-                      plus {{ row.cost.unaccounted.join(', ') }}, which report no token accounting
-                    </small>
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-          </section>
-
-          <!-- ── the context packet (AC2, AC3, AC9) ─────────────────────── -->
-          <section class="inspector__section" data-packet :data-status="view.packet.status">
-            <UiSectionLabel as="h3">Context packet</UiSectionLabel>
-
-            <template v-if="view.packet.status === 'built'">
+            <div v-if="view.schemaErrors !== null" class="inspector__fail">
               <p>
-                <strong :data-packet-total="view.packet.headerTotal ?? 0">
-                  {{ view.packet.headerTotal }}
-                  tokens
-                </strong>
-                <button
-                  v-if="view.packet.builtAtSeq !== null"
-                  type="button"
-                  :data-seq-link="view.packet.builtAtSeq"
-                  @click="ui.selectEvent(view.packet.builtAtSeq)"
-                >
-                  seq {{ view.packet.builtAtSeq }}
-                </button>
-                <!--
-                  AC3 made visible rather than only asserted: if the builder's
-                  header and its own segments ever disagreed, an operator would
-                  see it here instead of trusting a silently recomputed total.
-                -->
-                <span v-if="view.packet.reconciles === false" class="inspector__warn">
-                  the per-segment counts sum to {{ view.packet.segmentSum }}, which is not the
-                  header total — the packet builder disagrees with itself
-                </span>
-              </p>
-
-              <div
-                v-for="group in view.packet.groups"
-                :key="group.kind"
-                :data-segment-group="group.kind"
-                :data-empty="group.segments.length === 0"
-                class="inspector__group"
-              >
-                <h4>{{ group.kind }} · {{ group.tokens }}</h4>
-                <ul v-if="group.segments.length > 0">
-                  <li
-                    v-for="segment in group.segments"
-                    :key="segment.id"
-                    :data-segment="segment.id"
-                    :data-pinned="segment.pinned"
-                  >
-                    <code>{{ segment.id }}</code>
-                    <span :data-segment-tokens="segment.tokens.estimated">
-                      {{ segment.tokens.estimated }}
-                    </span>
-                    <UiChip v-if="segment.pinned" variant="info" mono>pinned</UiChip>
-                    <button
-                      type="button"
-                      :data-seq-link="segment.sourceEvent"
-                      @click="ui.selectEvent(segment.sourceEvent)"
-                    >
-                      seq {{ segment.sourceEvent }}
-                    </button>
-                  </li>
-                </ul>
-                <p v-else class="inspector__muted">nothing of this kind was in the packet</p>
-              </div>
-            </template>
-
-            <!-- AC9 — honest emptiness. Never blank, never a fabricated packet. -->
-            <template v-else>
-              <p>
-                <strong>No context packet was built for this attempt.</strong>
-                This node failed before context assembly ran, so there is nothing to show — and
-                nothing has been invented to fill the space.
-              </p>
-              <div v-if="view.packet.absence !== null" data-packet-absence class="inspector__fail">
-                <span data-failure-reason>{{ view.packet.absence.reason }}</span>
-                <span data-failure-class>{{ view.packet.absence.class }}</span>
-                <p data-failure-message>{{ view.packet.absence.message }}</p>
-                <ul>
-                  <li
-                    v-for="handle in view.packet.absence.evidence"
-                    :key="handle"
-                    data-evidence
-                    class="mono"
-                  >
-                    {{ handle }}
-                  </li>
-                </ul>
-              </div>
-            </template>
-          </section>
-
-          <!-- ── the side-by-side (AC6) ─────────────────────────────────── -->
-          <section class="inspector__section">
-            <UiSectionLabel as="h3">Compare with</UiSectionLabel>
-            <select
-              data-compare-with
-              aria-label="Compare this attempt’s packet with"
-              :value="ui.comparedAttempt === null ? '' : String(ui.comparedAttempt)"
-              @change="
-                ui.compareAttempt(
-                  ($event.target as HTMLSelectElement).value === ''
-                    ? null
-                    : Number(($event.target as HTMLSelectElement).value),
-                )
-              "
-            >
-              <option value="">— no comparison —</option>
-              <option
-                v-for="row in view.attempts.filter((one) => one.attempt !== attempt && one.hasPacket)"
-                :key="row.key"
-                :value="String(row.attempt)"
-              >
-                attempt {{ row.attempt }}
-              </option>
-            </select>
-
-            <div v-if="diff !== null" data-packet-diff>
-              <!--
-                EPIC-17-S13. Stated rather than inferred from an absence of
-                changed rows, which is indistinguishable from a diff that never
-                ran — and "the repair changed nothing" is itself the diagnosis.
-              -->
-              <p v-if="diff.identical" data-diff-identical class="inspector__warn">
-                These two packets are <strong>identical</strong>. The repair between them changed
-                nothing about what this node was given.
+                did not satisfy <strong data-schema-id>{{ view.schemaErrors.schemaId }}</strong>
               </p>
               <ul>
                 <li
-                  v-for="row in diff.rows"
-                  :key="row.id"
-                  :data-diff-row="row.id"
-                  :data-change="row.change"
+                  v-for="(error, index) in view.schemaErrors.errors"
+                  :key="`${error.instancePath}#${index}`"
+                  data-schema-error
                 >
-                  <code>{{ row.id }}</code>
-                  <span>{{ row.change }}</span>
-                  <span v-if="row.change === 'changed'" class="mono">
-                    {{ row.leftHash }}
-                    → {{ row.rightHash }}
-                  </span>
+                  <code data-instance-path>{{ error.instancePath }}</code>
+                  <span>{{ error.keyword }}</span>
+                  <span>{{ error.message }}</span>
                 </li>
               </ul>
             </div>
-          </section>
+          </TabsContent>
 
-          <!-- ── provenance (AC8) ───────────────────────────────────────── -->
-          <section class="inspector__section">
-            <UiSectionLabel as="h3">Facts this node read</UiSectionLabel>
-
-            <table v-if="view.provenance.length > 0" class="inspector__table">
-              <thead>
-                <tr>
-                  <th>key</th>
-                  <th>value</th>
-                  <th>written by</th>
-                  <th>confidence</th>
-                  <th>when</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr
-                  v-for="row in view.provenance"
-                  :key="row.factId"
-                  :data-provenance-row="row.factId"
-                  :data-invalidated="row.invalidated !== null"
-                >
-                  <td>
-                    <span data-fact-key>{{ row.key }}</span>
-                    <button
-                      type="button"
-                      :data-seq-link="row.writtenAtSeq"
-                      @click="ui.selectEvent(row.writtenAtSeq)"
-                    >
-                      seq {{ row.writtenAtSeq }}
-                    </button>
-                  </td>
-                  <td class="mono">{{ row.valueSummary }}</td>
-                  <td>
-                    <!-- AC8: each row links to the writing node's inspector. -->
-                    <button
-                      type="button"
-                      :data-open-node="row.byNode"
-                      @click="ui.inspectNodeById(row.byNode)"
-                    >
-                      <span data-fact-writer>{{ row.byNode }}</span>
-                    </button>
-                    <ul>
-                      <li v-for="handle in row.evidence" :key="handle" data-evidence class="mono">
-                        {{ handle }}
-                      </li>
-                    </ul>
-                  </td>
-                  <td data-fact-confidence>{{ row.confidence }}</td>
-                  <td data-fact-at>{{ row.at }}</td>
-                  <td v-if="row.invalidated !== null" class="inspector__fail">
-                    invalidated by
-                    <span data-invalidated-by>{{ row.invalidated.by }}</span>
-                    — {{ row.invalidated.reason }}
-                  </td>
-                </tr>
-              </tbody>
-            </table>
-
-            <p v-else data-provenance-empty class="inspector__muted">
-              This node read no facts from the blackboard.
-            </p>
-          </section>
-
-          <!-- ── the debug ring (AC7) ───────────────────────────────────── -->
-          <section class="inspector__section">
-            <UiSectionLabel as="h3">Debug ring</UiSectionLabel>
+          <!-- ── config: runtime & model as UiMetaRows, the prompt as a code block (AC3) ── -->
+          <TabsContent
+            value="config"
+            data-inspector-config
+            data-inspector-tabpanel="config"
+            class="inspector__tabpanel"
+          >
+            <UiMetaRow v-if="view.header.type !== null" label="type" :value="view.header.type" />
+            <UiMetaRow
+              v-if="view.header.provider !== null"
+              label="runtime"
+              :value="view.header.provider"
+            />
+            <UiMetaRow v-if="view.header.model !== null" label="model" :value="view.header.model" />
+            <UiMetaRow
+              v-if="view.header.worktree !== null"
+              label="worktree"
+              :value="view.header.worktree"
+            />
             <!--
-              The whitespace inside a `<pre>` is content, so the expression sits
-              flush against both tags: a newline added for readability here
-              would be a newline in what the operator reads.
+              `data-field="path-scopes"` and `data-field="permission"` above
+              fall through onto `UiMetaRow`'s own root, which also carries
+              the label — fine for the two assertions that read them, which
+              ask "is this truthy" and "does this contain src/**", not "is
+              this exactly one value" (`node-inspector.test.ts`).
             -->
-            <pre
-              v-if="envelope !== null"
-              :data-ring-envelope="envelope.seq"
-              class="inspector__code mono"
-            >{{ envelopeJson }}</pre>
-            <p v-else-if="ui.selectedEventSeq !== null" class="inspector__muted">
-              Event {{ ui.selectedEventSeq }} has rolled out of the 2,000-envelope ring. Scrub to a
-              snapshot at or before it to bring it back.
-            </p>
-            <p v-else class="inspector__muted">
-              Click any figure above to select the event that produced it.
-            </p>
-          </section>
+            <UiMetaRow
+              v-if="view.header.pathScopes !== null"
+              label="path scopes"
+              data-field="path-scopes"
+              :value="`write: ${view.header.pathScopes.write.join(', ') || 'nothing'} · read: ${view.header.pathScopes.read.join(', ') || 'nothing'}`"
+            />
+            <UiMetaRow
+              v-if="view.header.permission !== null"
+              label="permission"
+              data-field="permission"
+              :value="view.header.permission"
+            />
+            <!--
+              Binary version and sha256 are hand-rolled rather than a third
+              pair of `UiMetaRow`s: `node-inspector.test.ts` reads each
+              value in isolation with `toBe`/`toMatch`, and `UiMetaRow`'s
+              root carries its label text alongside the value — right for
+              every other row here, wrong for the one assertion that wants
+              the value alone.
+            -->
+            <div v-if="view.header.binary !== null" class="inspector__config-row">
+              <span class="inspector__config-label">CLI version</span>
+              <span class="inspector__config-value mono" data-field="binary-version"
+                >{{ view.header.binary.version }}</span
+              >
+            </div>
+            <div v-if="view.header.binary !== null" class="inspector__config-row">
+              <span class="inspector__config-label">binary sha256</span>
+              <span class="inspector__config-value mono" data-field="binary-sha256"
+                >{{ view.header.binary.sha256 }}</span
+              >
+            </div>
+
+            <div class="inspector__prompt">
+              <UiSectionLabel>system prompt</UiSectionLabel>
+              <template v-if="view.packet.status === 'built'">
+                <!--
+                  The whitespace inside a `<pre>` is content, so the
+                  expression sits flush against both tags.
+                -->
+                <pre
+                  v-if="view.packet.promptHandle !== null"
+                  :data-prompt-handle="view.packet.promptHandle"
+                  class="inspector__code mono"
+                >{{ view.packet.promptHandle }}</pre>
+                <p data-prompt-derived class="inspector__muted">
+                  The rendered prompt is <em>derived</em> from the manifest above. The
+                  <strong>manifest is authoritative</strong>: if the two ever disagree, the manifest
+                  is what the daemon assembled and sent.
+                </p>
+              </template>
+              <p v-else class="inspector__muted">
+                No context packet was built for this attempt, so there is no prompt to show.
+              </p>
+            </div>
+          </TabsContent>
+        </div>
+      </TabsRoot>
+
+      <!-- ── everything below is this application's own diagnostic material,
+           not direction A's tab split — always on screen, per the story's
+           own "diagnosis is scrolling rather than clicking". ─────────── -->
+
+      <!-- ── attempt history (AC1, AC6, AC7) ────────────────────────── -->
+      <section class="inspector__section">
+        <UiSectionLabel as="h3">Attempts</UiSectionLabel>
+
+        <div class="inspector__tabs" role="tablist" aria-label="Attempt">
+          <button
+            v-for="row in view.attempts"
+            :key="row.key"
+            type="button"
+            role="tab"
+            :data-attempt-tab="row.attempt"
+            :aria-selected="row.attempt === attempt"
+            @click="ui.inspectAttempt(row.attempt)"
+          >
+            attempt {{ row.attempt }}
+          </button>
+        </div>
+
+        <table class="inspector__table">
+          <thead>
+            <tr>
+              <th>attempt</th>
+              <th>outcome</th>
+              <th>duration</th>
+              <th>cost</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="row in view.attempts" :key="row.key" :data-attempt-row="row.key">
+              <td>{{ row.attempt }}</td>
+              <td data-outcome>
+                <!--
+                  AC7: the transition links to the lifecycle event that made
+                  it, so "why does it say failed" is one click from the
+                  envelope that said so.
+                -->
+                <button
+                  v-if="row.endedAtSeq !== null"
+                  type="button"
+                  :data-seq-link="row.endedAtSeq"
+                  @click="ui.selectEvent(row.endedAtSeq)"
+                >
+                  {{ row.outcome }}
+                </button>
+                <span v-else>{{ row.outcome }}</span>
+                <em v-if="row.failure !== null" data-failure-reason>{{ row.failure.reason }}</em>
+              </td>
+              <td data-duration>{{ duration(row.durationMs) }}</td>
+              <td data-cost>
+                <button
+                  v-if="row.cost.seq > 0"
+                  type="button"
+                  :data-seq-link="row.cost.seq"
+                  @click="ui.selectEvent(row.cost.seq)"
+                >
+                  {{ money(row.cost.vendorReported ?? row.cost.estimated) }}
+                </button>
+                <span v-else>—</span>
+                <!--
+                  AC10. Named, never a zero: a `0` is a claim the vendor
+                  billed nothing, and nobody measured that.
+                -->
+                <small v-if="row.cost.unaccounted.length > 0" data-unaccounted>
+                  plus {{ row.cost.unaccounted.join(', ') }}, which report no token accounting
+                </small>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
+
+      <!-- ── the context packet (AC2, AC3, AC9) ─────────────────────── -->
+      <section class="inspector__section" data-packet :data-status="view.packet.status">
+        <UiSectionLabel as="h3">Context packet</UiSectionLabel>
+
+        <template v-if="view.packet.status === 'built'">
+          <p>
+            <strong :data-packet-total="view.packet.headerTotal ?? 0">
+              {{ view.packet.headerTotal }}
+              tokens
+            </strong>
+            <button
+              v-if="view.packet.builtAtSeq !== null"
+              type="button"
+              :data-seq-link="view.packet.builtAtSeq"
+              @click="ui.selectEvent(view.packet.builtAtSeq)"
+            >
+              seq {{ view.packet.builtAtSeq }}
+            </button>
+            <!--
+              AC3 made visible rather than only asserted: if the builder's
+              header and its own segments ever disagreed, an operator would
+              see it here instead of trusting a silently recomputed total.
+            -->
+            <span v-if="view.packet.reconciles === false" class="inspector__warn">
+              the per-segment counts sum to {{ view.packet.segmentSum }}, which is not the header
+              total — the packet builder disagrees with itself
+            </span>
+          </p>
+
+          <div
+            v-for="group in view.packet.groups"
+            :key="group.kind"
+            :data-segment-group="group.kind"
+            :data-empty="group.segments.length === 0"
+            class="inspector__group"
+          >
+            <h4>{{ group.kind }} · {{ group.tokens }}</h4>
+            <ul v-if="group.segments.length > 0">
+              <li
+                v-for="segment in group.segments"
+                :key="segment.id"
+                :data-segment="segment.id"
+                :data-pinned="segment.pinned"
+              >
+                <code>{{ segment.id }}</code>
+                <span :data-segment-tokens="segment.tokens.estimated">
+                  {{ segment.tokens.estimated }}
+                </span>
+                <UiChip v-if="segment.pinned" variant="info" mono>pinned</UiChip>
+                <button
+                  type="button"
+                  :data-seq-link="segment.sourceEvent"
+                  @click="ui.selectEvent(segment.sourceEvent)"
+                >
+                  seq {{ segment.sourceEvent }}
+                </button>
+              </li>
+            </ul>
+            <p v-else class="inspector__muted">nothing of this kind was in the packet</p>
+          </div>
         </template>
 
+        <!-- AC9 — honest emptiness. Never blank, never a fabricated packet. -->
         <template v-else>
-          <DialogTitle class="inspector__title">Node</DialogTitle>
-          <DialogDescription class="inspector__id">No node is selected.</DialogDescription>
+          <p>
+            <strong>No context packet was built for this attempt.</strong>
+            This node failed before context assembly ran, so there is nothing to show — and nothing
+            has been invented to fill the space.
+          </p>
+          <div v-if="view.packet.absence !== null" data-packet-absence class="inspector__fail">
+            <span data-failure-reason>{{ view.packet.absence.reason }}</span>
+            <span data-failure-class>{{ view.packet.absence.class }}</span>
+            <p data-failure-message>{{ view.packet.absence.message }}</p>
+            <ul>
+              <li
+                v-for="handle in view.packet.absence.evidence"
+                :key="handle"
+                data-evidence
+                class="mono"
+              >
+                {{ handle }}
+              </li>
+            </ul>
+          </div>
         </template>
-      </DialogContent>
-    </DialogPortal>
-  </DialogRoot>
+      </section>
+
+      <!-- ── the side-by-side (AC6) ─────────────────────────────────── -->
+      <section class="inspector__section">
+        <UiSectionLabel as="h3">Compare with</UiSectionLabel>
+        <select
+          data-compare-with
+          aria-label="Compare this attempt’s packet with"
+          :value="ui.comparedAttempt === null ? '' : String(ui.comparedAttempt)"
+          @change="
+            ui.compareAttempt(
+              ($event.target as HTMLSelectElement).value === ''
+                ? null
+                : Number(($event.target as HTMLSelectElement).value),
+            )
+          "
+        >
+          <option value="">— no comparison —</option>
+          <option
+            v-for="row in view.attempts.filter((one) => one.attempt !== attempt && one.hasPacket)"
+            :key="row.key"
+            :value="String(row.attempt)"
+          >
+            attempt {{ row.attempt }}
+          </option>
+        </select>
+
+        <div v-if="diff !== null" data-packet-diff>
+          <!--
+            EPIC-17-S13. Stated rather than inferred from an absence of
+            changed rows, which is indistinguishable from a diff that never
+            ran — and "the repair changed nothing" is itself the diagnosis.
+          -->
+          <p v-if="diff.identical" data-diff-identical class="inspector__warn">
+            These two packets are <strong>identical</strong>. The repair between them changed
+            nothing about what this node was given.
+          </p>
+          <ul>
+            <li
+              v-for="row in diff.rows"
+              :key="row.id"
+              :data-diff-row="row.id"
+              :data-change="row.change"
+            >
+              <code>{{ row.id }}</code>
+              <span>{{ row.change }}</span>
+              <span v-if="row.change === 'changed'" class="mono">
+                {{ row.leftHash }}
+                → {{ row.rightHash }}
+              </span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- ── provenance (AC8) ───────────────────────────────────────── -->
+      <section class="inspector__section">
+        <UiSectionLabel as="h3">Facts this node read</UiSectionLabel>
+
+        <table v-if="view.provenance.length > 0" class="inspector__table">
+          <thead>
+            <tr>
+              <th>key</th>
+              <th>value</th>
+              <th>written by</th>
+              <th>confidence</th>
+              <th>when</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="row in view.provenance"
+              :key="row.factId"
+              :data-provenance-row="row.factId"
+              :data-invalidated="row.invalidated !== null"
+            >
+              <td>
+                <span data-fact-key>{{ row.key }}</span>
+                <button
+                  type="button"
+                  :data-seq-link="row.writtenAtSeq"
+                  @click="ui.selectEvent(row.writtenAtSeq)"
+                >
+                  seq {{ row.writtenAtSeq }}
+                </button>
+              </td>
+              <td class="mono">{{ row.valueSummary }}</td>
+              <td>
+                <!-- AC8: each row links to the writing node's inspector. -->
+                <button
+                  type="button"
+                  :data-open-node="row.byNode"
+                  @click="ui.inspectNodeById(row.byNode)"
+                >
+                  <span data-fact-writer>{{ row.byNode }}</span>
+                </button>
+                <ul>
+                  <li v-for="handle in row.evidence" :key="handle" data-evidence class="mono">
+                    {{ handle }}
+                  </li>
+                </ul>
+              </td>
+              <td data-fact-confidence>{{ row.confidence }}</td>
+              <td data-fact-at>{{ row.at }}</td>
+              <td v-if="row.invalidated !== null" class="inspector__fail">
+                invalidated by
+                <span data-invalidated-by>{{ row.invalidated.by }}</span>
+                — {{ row.invalidated.reason }}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <p v-else data-provenance-empty class="inspector__muted">
+          This node read no facts from the blackboard.
+        </p>
+      </section>
+
+      <!-- ── the debug ring (AC7) ───────────────────────────────────── -->
+      <section class="inspector__section">
+        <UiSectionLabel as="h3">Debug ring</UiSectionLabel>
+        <!--
+          The whitespace inside a `<pre>` is content, so the expression sits
+          flush against both tags: a newline added for readability here
+          would be a newline in what the operator reads.
+        -->
+        <pre
+          v-if="envelope !== null"
+          :data-ring-envelope="envelope.seq"
+          class="inspector__code mono"
+        >{{ envelopeJson }}</pre>
+        <p v-else-if="ui.selectedEventSeq !== null" class="inspector__muted">
+          Event {{ ui.selectedEventSeq }} has rolled out of the 2,000-envelope ring. Scrub to a
+          snapshot at or before it to bring it back.
+        </p>
+        <p v-else class="inspector__muted">
+          Click any figure above to select the event that produced it.
+        </p>
+      </section>
+    </template>
+
+    <template v-else>
+      <h2 :id="ID_TITLE" class="inspector__title">Node</h2>
+      <p class="inspector__id">No node is selected.</p>
+    </template>
+  </aside>
 </template>
 
 <style scoped>
-.inspector__scrim {
-  position: fixed;
-  inset: 0;
-  background: var(--surface-overlay);
-}
-
 /*
- * AC1 — a 400px panel docked to the right edge, full height, rather than the
- * centred card this file drew before KAR-24.6. Still a `DialogContent`: see
- * this file's own header comment for why that half is unchanged.
+ * KAR-24.6 AC1, KAR-28.4 AC1 — a 400px panel at the right edge, full height.
+ *
+ * KAR-24.6 drew that shape with `position: fixed`, which is the same picture
+ * and a different thing: a fixed panel is *over* the screen, so the 400px it
+ * occupies is 400px of the agent list nobody can read or click. In the grid it
+ * is a column of its own (`App.vue`'s `.shell`), so opening it narrows the work
+ * instead — the difference this story exists for.
+ *
+ * `--shadow-panel` rather than `--shadow-modal` for the same reason: the modal
+ * shadow is the lift a thing floating over a scrim needs, and there is no
+ * scrim any more. The border is what separates it from the view beside it.
  */
 .inspector {
-  position: fixed;
-  inset-block: 0;
-  inset-inline-end: 0;
+  min-height: 0;
   width: min(400px, 100vw);
-  max-height: 100vh;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
   border-inline-start: 1px solid var(--edge);
   background: var(--surface-raised);
   color: var(--ink);
-  box-shadow: var(--shadow-modal);
+  box-shadow: var(--shadow-panel);
 }
 
 .inspector__title {

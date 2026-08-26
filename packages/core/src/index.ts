@@ -1202,6 +1202,15 @@ export type {
 } from './run-control-plan.ts';
 export { planRunControl, RUN_CONTROL_ENDED, RUN_CONTROL_UNAPPROVED } from './run-control-plan.ts';
 export { mintRunId } from './run-id.ts';
+// KAR-28.5 — the run's own shape: the plan's top-level steps, each counted in
+// the work the ledger records inside it. ADR 0018 defines what a phase *is*,
+// because the word arrived from a blueprint and `node.progress.phase` already
+// means something else.
+export type { PhaseFold, PhaseState, PhasesBasis, RunPhase, RunPhases } from './run-phases.ts';
+// `foldPhaseItems` is KAR-28.6's: the band gets each phase's *membership* from
+// this projection over the wire and folds those items' statuses off the stream,
+// through this very function, rather than refetching per frame.
+export { foldPhaseItems, PHASE_STATES, runPhases } from './run-phases.ts';
 export type {
   BudgetBreach,
   BudgetState,

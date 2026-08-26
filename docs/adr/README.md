@@ -37,6 +37,7 @@ we keep them at all.
 | [0015](./0015-fts5-only-retrieval-at-m1.md)                            | FTS5 and BM25 only for retrieval at M1                | Accepted | BM25 beats embeddings on a corpus of identifiers and stack traces. `tokenchars` is the load-bearing detail.                   |
 | [0016](./0016-DeFlow-emits-genai-telemetry-itself.md)                  | DeFlow emits `gen_ai.*` telemetry itself              | Accepted | The PRD's assumption is contradicted — Claude Code emits a private `claude_code.*` namespace. Phoenix, not Langfuse, locally. |
 | [0017](./0017-mock-agent-binary-as-a-shipped-package.md)               | The mock agent is a real binary, and shipped          | Accepted | A fake binary tests the parser, the framing and the kill path. A mocked module tests the mock.                                |
+| [0018](./0018-a-phase-is-a-top-level-step-of-the-executing-plan.md)    | A phase is a top-level step of the executing plan     | Accepted | The blueprint's word given a domain meaning: a plan node nothing contains, counted in the nodes it fans out into.             |
 
 Nothing is superseded yet. When something is, its row keeps its number, its status becomes
 `Superseded by NNNN`, and the file body is left alone.

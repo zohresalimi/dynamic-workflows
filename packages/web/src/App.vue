@@ -225,25 +225,44 @@ onUnmounted(() => {
         <RouterView v-else />
       </main>
     </div>
+
+    <!--
+      KAR-28.4 — the inspector, docked.
+
+      Inside `.shell` and beside the column rather than portalled over it: it is
+      the grid's third track, so an open inspector *narrows* the view rather
+      than covering it, and the rail, the topbar and the agent list stay lit and
+      clickable while it is up (AC1). It renders nothing at all when closed, so
+      the track is zero-width and the shell is exactly the two columns it was.
+
+      `CommandJumper` below stays outside, because it *is* a modal: a jumper is
+      the one interaction where the rest of the screen genuinely should stop
+      taking input until it is answered or dismissed.
+    -->
+    <NodeInspector />
   </div>
 
   <CommandJumper />
-  <NodeInspector />
 </template>
 
 <style scoped>
-/* Two columns: the rail (its own fixed/collapsing width, `AppRail.vue`'s
-   business) and everything else. `--no-rail` collapses to the one column a
-   tokenless tab actually has, rather than leaving an "auto" track to size
-   itself off whatever `.shell__column`'s content happens to be. */
+/* Three columns: the rail (its own fixed/collapsing width, `AppRail.vue`'s
+   business), everything else, and — KAR-28.4 — the docked inspector.
+   `--no-rail` collapses to the two a tokenless tab actually has, rather than
+   leaving an "auto" track to size itself off whatever `.shell__column`'s
+   content happens to be.
+
+   The inspector's track is `auto` and `NodeInspector` renders nothing when it
+   is closed, so a shell with no inspector open is the two columns it always
+   was: an empty auto track has no width. */
 .shell {
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto minmax(0, 1fr) auto;
   height: 100%;
 }
 
 .shell--no-rail {
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr) auto;
 }
 
 /* Three rows, always: the bar, the gate band (empty until a run stops to ask)
