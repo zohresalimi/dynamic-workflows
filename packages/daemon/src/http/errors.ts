@@ -121,6 +121,16 @@ export const API_ERROR_STATUS = {
   // no amount of waiting installs `gh` or grants a scope, and a retryable
   // status would train a client to sit in a loop over a human's decision.
   connector_unusable: 422,
+  // KAR-27.9 AC2 — the mode is a real one and this run's route cannot serve it:
+  // the exec shim spawns the vendor CLI for one turn and has no channel to
+  // carry `session/cancel`. 422 rather than 400, because the request is well
+  // formed and the caller is not confused about the shape of anything, and
+  // rather than 409, because this is not a state the run will leave — it is a
+  // property of the transport it was admitted onto. Its own code and not
+  // `invalid_request` so that a client can offer the ladder that *is* available
+  // instead of showing a validation error against a field the operator got
+  // right.
+  cancel_mode_unavailable: 422,
 
   // 429
   provider_rate_limited: 429,

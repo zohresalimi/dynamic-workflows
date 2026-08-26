@@ -39,6 +39,7 @@ import {
   providerTokenAccounting,
 } from '@DeFlow/adapters';
 import type {
+  CancelLadders,
   CancelMode,
   Db,
   EstimatorInputs,
@@ -55,6 +56,9 @@ import type {
 import {
   acceptanceBoard,
   CANCEL_MODES,
+  cancelLaddersFor,
+  cancelWaiting,
+  cooperativeCancelUnavailable,
   INTERJECTION_MODES,
   initialNodeState,
   mintRunId,
@@ -556,6 +560,28 @@ function probedVersion(view: LedgerView, provider: string | null): string | null
 }
 
 /**
+ * KAR-27.9 AC3 — which ladders this run can be stopped on, read once.
+ *
+ * The single reader both the cancel route and `GET /api/runs/:id` go through,
+ * so *"the CLI and the API cannot disagree about which ladders a run
+ * supports"* is a property of the code rather than a promise: a control that
+ * offered cooperative on a run the daemon would refuse it for would have to be
+ * asking a different function.
+ *
+ * `inFlight` is read off the projection rather than the `process` table because
+ * this route has a read-only ledger connection and no writer, and because a
+ * node the *ledger* says is running is exactly what a cooperative cancel has to
+ * reach. `state` is threaded in where the caller already has one; the fold is
+ * not worth repeating on the hot cancel path.
+ */
+function runCancelLadders(view: LedgerView, runId: RunId, known?: RunState): CancelLadders {
+  const state = known ?? view.runState(runId);
+  const inFlight =
+    state !== null && Object.values(state.nodes).some((node) => node.status === 'running');
+  return cancelLaddersFor({ route: runProvider(view, runId)?.route ?? null, inFlight });
+}
+
+/**
  * KAR-22.1 AC7 — the project this run belongs to, or `null`.
  *
  * Read from the run's **first** event, which is always its `task.submitted`:
@@ -943,6 +969,30 @@ async function controlRoute(c: Context, verb: RunControlVerb) {
       );
     }
     mode = asked as CancelMode;
+
+    /**
+     * KAR-27.9 AC2 — refused **here**, before `controlRun` appends anything.
+     *
+     * The whole defect this closes is a `run.cancel.requested` that no rung can
+     * ever answer: on the exec-shim route there is no channel to carry
+     * `session/cancel`, so a cooperative cancel was accepted, projected as
+     * `cancelling`, and parked until somebody typed `--force`. A refusal after
+     * the append would be the same wait with a better error message.
+     *
+     * The inputs are the run's own admission record and its own projection —
+     * the very pair `GET /api/runs/:id` serves as `cancelLadders`, through the
+     * very same function — so this refusal and that capability cannot disagree
+     * (AC3).
+     */
+    const view = ledgerView();
+    const ladders = view === null ? null : runCancelLadders(view, runId);
+    if (ladders !== null && ladders.route !== null && !ladders.modes.includes(mode)) {
+      return c.json(
+        ...apiError('cancel_mode_unavailable', cooperativeCancelUnavailable(runId, ladders.route), {
+          detail: { field: 'mode', route: ladders.route, modes: ladders.modes },
+        }),
+      );
+    }
   }
 
   const result = controlRun({
@@ -1346,11 +1396,26 @@ export const api = new Hono()
     // `pendingGate` is the one reader of it — the terminal, `deflow status` and
     // the run list all ask the same function.
     const gate = pendingGate(state);
+    // KAR-27.6 AC2, AC6 — and, for a run whose cooperative cancel has gone
+    // unanswered, what is still running and how to end it. The fifth sibling of
+    // the four above and for the same reason: it is not run state, it is a
+    // rendering of one, and `cancelWaiting` is its one producer — so this body
+    // and `deflow status` name the same survivors and the same way out.
+    const waiting = cancelWaiting(state, runId);
     // KAR-22.1 AC7 — and which project it belongs to, read off the run's own
     // `task.submitted` rather than from the `project` table: a project that has
     // been removed cannot make a run forget where it came from, and a run from
     // before projects existed honestly answers `null`.
     const projectId = runProjectId(view, runId);
+    // KAR-27.9 AC3 — and which ladders this run can be stopped on: a fact about
+    // the route it was admitted onto and whether it has a turn in flight.
+    //
+    // Unconditional rather than folded into `provider`, because a control has
+    // to know whether to offer cooperative *before* it knows whether a run was
+    // ever admitted, and a missing field would be read as "both, probably" by
+    // one client and "neither" by the next. `POST /api/runs/:id/cancel` refuses
+    // exactly the modes this leaves out, through this same function.
+    const cancelLadders = runCancelLadders(view, runId, state);
     return c.json(
       {
         ...runSummary(
@@ -1365,6 +1430,8 @@ export const api = new Hono()
         ...(failure === null ? {} : { failure }),
         ...(provider === null ? {} : { provider }),
         ...(gate === null ? {} : { gate }),
+        ...(waiting === null ? {} : { cancelWaiting: waiting }),
+        cancelLadders,
       },
       200,
     );

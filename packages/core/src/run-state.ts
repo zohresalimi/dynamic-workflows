@@ -347,6 +347,26 @@ export interface CancelState {
   readonly mode: 'cooperative' | 'forceful';
   /** The `seq` of the `run.cancel.requested` that asked, for the timeline. */
   readonly requestedSeq: number;
+  /**
+   * KAR-27.6 AC1, AC4 — the report a cooperative cancel that went unanswered
+   * past `COOPERATIVE_CANCEL_UNANSWERED_MS` left on the log, or `null` while
+   * none has been made.
+   *
+   * On the projection rather than derived at render time, so *whether* the
+   * window has elapsed is decided once, by the loop, and recorded: two surfaces
+   * folding one ledger against two clocks would otherwise disagree about whether
+   * a run is waiting. `survivors` is what was still running when the report was
+   * made, which is the answer to *"what is still running"* that AC4 requires be
+   * available without `ps`.
+   *
+   * It is a **report, never a promotion**: nothing that reads this field may
+   * escalate the cancel (EPIC-19-S38). @see ./cooperative-cancel.ts
+   */
+  readonly unanswered: {
+    /** The instant the operator asked, which is what has gone unanswered. */
+    readonly sinceTs: number;
+    readonly survivors: readonly { readonly node: string; readonly pid: number }[];
+  } | null;
 }
 
 /**
@@ -647,9 +667,11 @@ export interface RunState {
  * 13 `gateVerdicts`; 14 `humanGates`, without which a restored daemon cannot
  * tell an answered gate from an open one; 15 the approval queue's fields; 16
  * `interjections`, so a restart cannot re-deliver guidance; 17
- * `preExecution`, so a framing turn in flight survives a restart.
+ * `preExecution`, so a framing turn in flight survives a restart; 18
+ * `CancelState.unanswered`, so a restarted daemon does not re-report a parked
+ * cooperative cancel it has already reported.
  */
-export const CHECKPOINT_VERSION = 17;
+export const CHECKPOINT_VERSION = 18;
 
 /**
  * A node nothing is yet known about: named by a plan, or named by an event
@@ -855,6 +877,15 @@ export const RunStateSchema: z.ZodType<RunState, unknown> = z.strictObject({
       mode: z.enum(CANCEL_MODES),
       /** The `seq` of the request, and no event has seq 0. */
       requestedSeq: z.number().int().positive(),
+      /** KAR-27.6 AC1 — the parked-cancel report, or `null` while none exists. */
+      unanswered: z
+        .strictObject({
+          sinceTs: wholeCount,
+          survivors: z.array(
+            z.strictObject({ node: NodeIdSchema, pid: z.number().int().positive() }),
+          ),
+        })
+        .nullable(),
     })
     .nullable(),
   planHash: PlanHashSchema.nullable(),

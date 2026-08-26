@@ -35,7 +35,12 @@
  * Verifies: EPIC-19-S37, EPIC-19-S38, EPIC-19-S41 · AC1, AC2, AC6, AC8
  */
 import type { CancelMode, RunStatus } from '@DeFlow/core';
-import { CANCEL_MODES, invalidCancelModeMessage, RUN_STATUS_LABELS } from '@DeFlow/core';
+import {
+  CANCEL_MODES,
+  forcefulCancelCommand,
+  invalidCancelModeMessage,
+  RUN_STATUS_LABELS,
+} from '@DeFlow/core';
 import { resolveDataDir } from '@DeFlow/daemon';
 import process from 'node:process';
 import { type Report, type ReportRow, renderReport } from './render/report.ts';
@@ -166,11 +171,10 @@ export function toCancelReport(answer: CancelAnswer): Report {
       detail: alreadyEnded
         ? `${answer.runId} had already ended: ${RUN_STATUS_LABELS[answer.status]} (seq ${answer.seq}). Nothing was appended.`
         : `${answer.runId} — ${RUN_STATUS_LABELS[answer.status]} (seq ${answer.seq})`,
-      ...(waiting
-        ? {
-            action: `deflow cancel ${answer.runId} --force`,
-          }
-        : {}),
+      // KAR-27.6 AC2 — the same command `deflow status`, the run list and the
+      // run view name, from `@DeFlow/core` rather than spelled a second time
+      // here (`test/one-cancel-remedy.test.ts`).
+      ...(waiting ? { action: forcefulCancelCommand(answer.runId) } : {}),
     },
     { id: 'mode', state: 'ok', detail: cancelModeSentence(answer.mode) },
   ];

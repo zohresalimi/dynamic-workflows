@@ -146,6 +146,20 @@ function when(iso: string): string {
               >waiting on {{ row.gate.node }} —
               {{ row.gate.options.map((o) => o.id).join(', ') }}</span
             >
+            <!--
+              KAR-27.6 AC2, AC4 — a cooperative cancel that has gone unanswered
+              names what is still running and how to end it, in the daemon's own
+              words. Both strings come off the row from `cancelWaiting` in
+              `@DeFlow/core`; this view composes neither, so the sentence here
+              and the one `deflow status` prints cannot drift.
+            -->
+            <span
+              v-if="row.cancelWaiting"
+              class="run-list__cancel-waiting"
+              :data-run-cancel-waiting="row.runId"
+              >still running: {{ row.cancelWaiting.stillRunning }} —
+              {{ row.cancelWaiting.remedy }}</span
+            >
           </RouterLink>
         </li>
       </ul>
@@ -281,5 +295,17 @@ function when(iso: string): string {
   margin-top: 4px; /* geometry — the gate line's own offset from the row above it */
   font-size: var(--text-xs);
   color: var(--state-awaiting-human);
+}
+
+/*
+ * The same line treatment the gate gets, in the palette's blocked colour —
+ * which is what `RUN_STATUS_DISPLAY` already maps `cancelling` to, so the dot
+ * and this line agree (`../lib/state-palette.ts`).
+ */
+.run-list__cancel-waiting {
+  grid-column: 1 / -1;
+  margin-top: 4px; /* geometry — the same offset the gate line uses */
+  font-size: var(--text-xs);
+  color: var(--state-blocked);
 }
 </style>

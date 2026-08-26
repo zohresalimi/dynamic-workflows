@@ -36,8 +36,8 @@
  */
 
 import { processStartTime } from '@DeFlow/adapters';
-import type { Clock, NodeStatus, PendingGate, RunId, RunStatus } from '@DeFlow/core';
-import { pendingGate, pendingGateSummary, runStatusLabel } from '@DeFlow/core';
+import type { CancelWaiting, Clock, NodeStatus, PendingGate, RunId, RunStatus } from '@DeFlow/core';
+import { cancelWaiting, pendingGate, pendingGateSummary, runStatusLabel } from '@DeFlow/core';
 import { type DaemonFile, daemonFilePath, resolveDataDir, systemClock } from '@DeFlow/daemon';
 import { listRunIds, openRead, readEpoch, replayRun } from '@DeFlow/ledger';
 import { readFileSync } from 'node:fs';
@@ -104,6 +104,18 @@ export interface ActiveRun {
    * `pendingGate` supplies this.
    */
   readonly gate: PendingGate | null;
+  /**
+   * KAR-27.6 AC2, AC4, AC6 — for a run whose cooperative cancel has gone
+   * unanswered, what is still running and how to end it; `null` otherwise.
+   *
+   * Beside the label rather than folded into it, for the same reason `gate` is:
+   * the *status* is `cancelling · the agent has not answered since …` and that
+   * is `runStatusLabel`'s to say, while "pid 48215 is still running, and
+   * `--force` is the way out" is a next move. Both come from `@DeFlow/core`, so
+   * this command and `GET /api/runs/:id` report the same wait in the same words
+   * (`test/one-cancel-remedy.test.ts`).
+   */
+  readonly cancelWaiting: CancelWaiting | null;
 }
 
 /** Why the recorded daemon is not the daemon. @see the module note. */
@@ -249,6 +261,7 @@ function activeRuns(dataDir: string): {
         label: runStatusLabel(state),
         nodeCounts,
         gate: pendingGate(state),
+        cancelWaiting: cancelWaiting(state, runId),
       });
     }
     return { runs, epoch, error: null };
@@ -379,23 +392,42 @@ function runsSection(status: RunningStatus): ReportSection {
   if (status.runs.length === 0) {
     return { title: 'Runs', rows: [{ id: 'runs', state: 'ok', detail: 'no active runs' }] };
   }
-  return {
-    title: 'Runs',
-    rows: status.runs.map((run) => ({
+  return { title: 'Runs', rows: status.runs.map(runRow) };
+}
+
+/**
+ * One run's line.
+ *
+ * KAR-27.6 AC2 — a parked cooperative cancel outranks an open gate for the
+ * `action`, on the rare run that has both: a run that is stopping does not want
+ * an answer to a question, and the one move left is the one that ends it.
+ */
+function runRow(run: ActiveRun): ReportSection['rows'][number] {
+  const waiting = run.cancelWaiting;
+  const detail = [
+    run.label,
+    renderNodeCounts(run.nodeCounts),
+    // AC4 — what is still running, named, so "what is holding this open" is
+    // answerable off this line rather than out of `ps`.
+    waiting === null ? '' : `still running: ${waiting.stillRunning}`,
+  ]
+    .filter((part) => part !== '')
+    .join(' — ');
+
+  if (waiting !== null) {
+    // AC2 — an outstanding fact with a next move, so never an `ok` row.
+    return { id: run.runId, state: 'warn', detail, action: waiting.remedy };
+  }
+  if (run.gate !== null) {
+    // AC5 — a run that is waiting on a person is an outstanding fact too.
+    return {
       id: run.runId,
-      // AC5 — a run that is waiting on a person is an outstanding fact, and an
-      // `ok` row is one an operator stops reading.
-      state: run.gate === null ? ('ok' as const) : ('warn' as const),
-      detail: [run.label, renderNodeCounts(run.nodeCounts)]
-        .filter((part) => part !== '')
-        .join(' — '),
-      ...(run.gate === null
-        ? {}
-        : {
-            action: `${pendingGateSummary(run.gate)}; answer it with 'deflow answer ${run.runId} --gate ${run.gate.node} --option ${run.gate.options[0]?.id ?? '<option>'}'`,
-          }),
-    })),
-  };
+      state: 'warn',
+      detail,
+      action: `${pendingGateSummary(run.gate)}; answer it with 'deflow answer ${run.runId} --gate ${run.gate.node} --option ${run.gate.options[0]?.id ?? '<option>'}'`,
+    };
+  }
+  return { id: run.runId, state: 'ok', detail };
 }
 
 /** `status`'s three answers, as the presentation layer's model (KAR-18.9 AC1). */
@@ -500,6 +532,7 @@ export function renderStatusJson(status: DaemonStatus): string {
             label: run.label,
             nodeCounts: run.nodeCounts,
             gate: run.gate,
+            cancelWaiting: run.cancelWaiting,
           })),
         }
       : status.kind === 'stale'

@@ -14,6 +14,12 @@
  *
  * Verifies: EPIC-18-S48, EPIC-18-S49 · AC3, AC4, AC5
  */
+import {
+  cancelWaiting,
+  forcefulCancelCommand,
+  initialRunState,
+  unansweredCancelClause,
+} from '@DeFlow/core';
 import { expect, it, describe as suite } from 'vitest';
 import {
   type DaemonStatus,
@@ -47,6 +53,9 @@ const running: DaemonStatus = {
       // KAR-19.12 AC5 — this run is not waiting on anybody, which is the
       // ordinary case and the one that must stay a plain `ok` row.
       gate: null,
+      // KAR-27.6 — and nobody cancelled it, which is EPIC-27-S33: no waiting
+      // copy appears anywhere.
+      cancelWaiting: null,
     },
     {
       runId: 'run_20260810T101500Z_c4a5b1',
@@ -56,9 +65,48 @@ const running: DaemonStatus = {
       label: 'submitted — waiting to be framed',
       nodeCounts: {},
       gate: null,
+      cancelWaiting: null,
     },
   ],
   ledgerError: null,
+};
+
+/**
+ * KAR-27.6 — a run whose cooperative cancel has gone unanswered.
+ *
+ * Both strings are `@DeFlow/core`'s own, built here through the same functions
+ * the daemon's row is built through, so this fixture cannot quietly become a
+ * second wording of the state.
+ */
+const PARKED = 'run_20260825T140000Z_c41f9b';
+const PARKED_SINCE = '2026-08-25T14:00:00.000Z';
+
+const parkedCancel: DaemonStatus = {
+  ...running,
+  runs: [
+    {
+      runId: PARKED,
+      status: 'cancelling',
+      label: `cancelling · ${unansweredCancelClause(Date.parse(PARKED_SINCE))}`,
+      nodeCounts: { running: 1 },
+      gate: null,
+      cancelWaiting: cancelWaiting(
+        {
+          ...initialRunState(),
+          status: 'cancelling',
+          cancel: {
+            mode: 'cooperative',
+            requestedSeq: 12,
+            unanswered: {
+              sinceTs: Date.parse(PARKED_SINCE),
+              survivors: [{ node: 'impl-auth', pid: 48_215 }],
+            },
+          },
+        },
+        PARKED,
+      ),
+    },
+  ],
 };
 
 const stale: DaemonStatus = {
@@ -152,6 +200,9 @@ suite('a live daemon (AC3)', () => {
           // a consumer reads "not waiting on anybody" rather than "this build
           // does not say".
           gate: null,
+          // KAR-27.6, for the same reason: `null` is "nobody is waiting on a
+          // cancel", which is not the same answer as a missing field.
+          cancelWaiting: null,
         },
         {
           runId: 'run_20260810T101500Z_c4a5b1',
@@ -159,9 +210,43 @@ suite('a live daemon (AC3)', () => {
           label: 'submitted — waiting to be framed',
           nodeCounts: {},
           gate: null,
+          cancelWaiting: null,
         },
       ],
     });
+  });
+});
+
+suite('EPIC-27-S28, S29, S31 — a parked cooperative cancel (KAR-27.6 AC2, AC4, AC6)', () => {
+  /** The report wraps to the terminal's width, so the assertions are about the
+   * words rather than about where the renderer chose to break them. */
+  const flowed = (status: DaemonStatus): string => renderStatusText(status).replaceAll(/\s+/g, ' ');
+
+  it('prints the waiting sentence, what is still running, and the way out', () => {
+    const text = flowed(parkedCancel);
+
+    // AC1's sentence, from `runStatusLabel` — not a second wording of it.
+    expect(text).toContain(`the agent has not answered since ${PARKED_SINCE}`);
+    // AC4 — pid and node, so "what is still running" needs no `ps`.
+    expect(text).toContain('pid 48215 (impl-auth)');
+    // AC2 — the operator's next move, naming this run.
+    expect(text).toContain(forcefulCancelCommand(PARKED));
+  });
+
+  it('draws the row as outstanding rather than ok', () => {
+    // An `ok` row is one an operator stops reading, and a run that is parked is
+    // the one thing on the page that wants them.
+    expect(flowed(parkedCancel)).toContain(`${PARKED} ! warn`);
+  });
+
+  it('--json carries the same two strings, not a rendering of them', () => {
+    const parsed = JSON.parse(renderStatusJson(parkedCancel)) as {
+      runs: readonly { cancelWaiting: { remedy: string; stillRunning: string; since: string } }[];
+    };
+    const waiting = parsed.runs[0]?.cancelWaiting;
+    expect(waiting?.since).toBe(PARKED_SINCE);
+    expect(waiting?.stillRunning).toBe('pid 48215 (impl-auth)');
+    expect(waiting?.remedy).toContain(forcefulCancelCommand(PARKED));
   });
 });
 

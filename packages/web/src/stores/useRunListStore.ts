@@ -24,7 +24,7 @@
  * **in place**, and its label is recomputed from the same table rather than
  * invented here.
  */
-import type { Event, PendingGateOption, RunStatus } from '@DeFlow/core';
+import type { CancelWaiting, Event, PendingGateOption, RunStatus } from '@DeFlow/core';
 import { RUN_STATUS_LABELS } from '@DeFlow/core';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, triggerRef } from 'vue';
@@ -48,6 +48,19 @@ export interface RunListRow {
    * without a refetch, exactly as its status word does.
    */
   readonly gate: { readonly node: string; readonly options: readonly PendingGateOption[] } | null;
+  /**
+   * KAR-27.6 AC2, AC4 — for a run whose cooperative cancel has gone unanswered,
+   * what is still running and how to end it; `null` for every other run.
+   *
+   * `GET /api/runs` puts it on the row (from `cancelWaiting`), and unlike
+   * `gate` there is no frame that carries it: `?runs=*`'s membership is the four
+   * lifecycle kinds and `run.cancel.unanswered` is not one of them. So a run
+   * that parks while this page is open wears the waiting copy on the next
+   * visit, exactly as the store's own header note describes for `run.created` —
+   * and a row this store *does* update in place keeps whatever the endpoint
+   * said, because none of the four kinds can create or clear a parked cancel.
+   */
+  readonly cancelWaiting: CancelWaiting | null;
 }
 
 /**
@@ -60,11 +73,41 @@ export interface RunListRow {
  * that has stopped to ask is exactly the run an operator scanning this list is
  * looking for.
  */
+/** The two lifecycle kinds that end a run, and therefore end every wait on it. */
+const ENDING: ReadonlySet<string> = new Set(['run.completed', 'run.aborted']);
+
 export const LIFECYCLE_STATUS: Readonly<Record<string, RunStatus>> = {
   'run.created': 'created',
   'run.completed': 'completed',
   'run.aborted': 'aborted',
   'human.requested': 'needs-human',
+};
+
+/**
+ * KAR-27.7 — the four kinds the *control verbs* append, which the global topic
+ * does not carry but a single run's own feed does.
+ *
+ * They are deliberately not folded into `LIFECYCLE_STATUS` above: that table is
+ * total over `?runs=*`, and its comment says so, so widening it would make a
+ * true sentence false. They are folded *with* it by `useRunStore` — see
+ * `RUN_STATUS_BY_KIND` — because a tab watching one run receives every kind on
+ * that run, and a pause control that could not see `run.paused` would be a
+ * control whose own effect was invisible to it.
+ *
+ * `run.cancel.requested` reduces to `cancelling` and not to an ended run: the
+ * ladder is still running, and `run.aborted` is what says it finished.
+ */
+const CONTROL_STATUS: Readonly<Record<string, RunStatus>> = {
+  'run.started': 'running',
+  'run.paused': 'paused',
+  'run.resumed': 'running',
+  'run.cancel.requested': 'cancelling',
+};
+
+/** Every kind that says something about a run's status, on any transport. */
+export const RUN_STATUS_BY_KIND: Readonly<Record<string, RunStatus>> = {
+  ...LIFECYCLE_STATUS,
+  ...CONTROL_STATUS,
 };
 
 export const useRunListStore = defineStore('run-list', () => {
@@ -119,6 +162,10 @@ export const useRunListStore = defineStore('run-list', () => {
           headSeq: event.seq,
           planVersion: 0,
           gate: gateOf(event),
+          // A run this list is meeting for the first time on a lifecycle frame
+          // has not been cancelled by it: the four kinds on this topic create,
+          // end or block a run, and none of them parks one.
+          cancelWaiting: null,
         },
         ...rows.value,
       ];
@@ -140,6 +187,10 @@ export const useRunListStore = defineStore('run-list', () => {
       // A run that ends stops waiting on anybody, so the gate goes with it —
       // `gateOf` answers `null` for every kind that is not a request.
       gate: gateOf(event),
+      // KAR-27.6 — and so does a parked cancel: `run.aborted` is what a
+      // completed cancel appends, and a row that kept naming survivors after it
+      // would be telling the operator to `--force` a run that has stopped.
+      cancelWaiting: ENDING.has(event.kind) ? null : (current.cancelWaiting ?? null),
     };
     rows.value = next;
     triggerRef(rows);

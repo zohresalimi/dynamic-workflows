@@ -130,7 +130,7 @@ const populated: RunState = {
     ],
     drift: null,
   },
-  cancel: { mode: 'forceful', requestedSeq: 6 },
+  cancel: { mode: 'forceful', requestedSeq: 6, unanswered: null },
   planHash: SHA,
   planVersion: 3,
   plan: graph(SHA),

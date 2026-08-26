@@ -388,6 +388,10 @@ export async function runUp(options: UpOptions = {}): Promise<UpResult> {
       runFraming: chain.runFraming,
       advanceRun: chain.advanceRun,
       executeNodes: execution.executeNodes,
+      // KAR-27.9 AC1 — the same registry that executor fills. Without this line
+      // the loop has no way to turn a `process` row back into the ACP connection
+      // somebody is holding, and a cooperative cancel asks nobody anything.
+      liveTurns: execution.liveTurns,
       probeProviders: ({ db, dataDir: dir }) =>
         probeProvidersOnBoot({ db, clock, dataDir: dir, env, randomHex }),
       // KAR-19.2 AC1 — the roots admission resolves against, which are the

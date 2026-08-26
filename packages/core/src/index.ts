@@ -130,6 +130,15 @@ export {
   resolveContextBudget,
   SegmentContentHashMismatch,
 } from './build-packet.ts';
+// KAR-27.9 — which ladders a run supports, read from the route it runs on, so
+// the API's refusal and every client's capability are one fact.
+export type { CancelLadders } from './cancel-ladders.ts';
+export {
+  cancelLaddersFor,
+  cancelModeAvailable,
+  cooperativeCancelUnavailable,
+  PROTOCOL_CANCEL_ROUTES,
+} from './cancel-ladders.ts';
 // KAR-19.6 AC2 — the one refusal the cancel route and `deflow cancel` both
 // speak when a mode is not one of the two ladders.
 export { cancelModeList, invalidCancelModeMessage } from './cancel-mode.ts';
@@ -241,6 +250,15 @@ export {
   TokenCountMethodSchema,
   TokenCountSchema,
 } from './context-packet.ts';
+// KAR-27.6 — the one place a parked cooperative cancel is described: the window
+// it is bounded by, what is still running under it, and the way out.
+export type { CancelSurvivor, CancelWaiting } from './cooperative-cancel.ts';
+export {
+  COOPERATIVE_CANCEL_UNANSWERED_MS,
+  cancelWaiting,
+  forcefulCancelCommand,
+  unansweredCancelClause,
+} from './cooperative-cancel.ts';
 // KAR-14.3 — the pre-flight estimator: what a plan, or a patch, is about to
 // cost, with the method, the calibration factor and the price-table version on
 // every figure — and `null`, never `0`, for anything it cannot price.
@@ -1167,6 +1185,22 @@ export {
   reviewerGateSegmentId,
   reviewerManifestIsClean,
 } from './reviewer-packet.ts';
+// KAR-15.5, moved here by KAR-27.7 — the pure half of the daemon's control
+// state machine. It lives in core because two packages decide with it now: the
+// daemon performs the plan, and the run surface reads the *refusal* off it, so
+// a disabled control is disabled exactly when the daemon would refuse it, in
+// the daemon's own sentence.
+export type {
+  RunControlAppend,
+  RunControlPlan,
+  RunControlRefusalCode,
+  RunControlRequest,
+  RunControlSource,
+  RunControlTerminate,
+  RunControlVerb,
+  RunSituation,
+} from './run-control-plan.ts';
+export { planRunControl, RUN_CONTROL_ENDED, RUN_CONTROL_UNAPPROVED } from './run-control-plan.ts';
 export { mintRunId } from './run-id.ts';
 export type {
   BudgetBreach,

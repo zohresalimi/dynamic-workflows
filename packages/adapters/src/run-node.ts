@@ -591,8 +591,17 @@ export async function runAcpNode(
     killTimer: null,
   };
 
-  /** Stage 2 and 3 of §9.4, armed only once a cooperative cancel went unanswered. */
+  /**
+   * Stage 2 and 3 of §9.4, armed only once a cooperative cancel went unanswered.
+   *
+   * KAR-27.9 — and not armed at all when the caller says so. DeFlowd is that
+   * caller: an operator's cooperative cancel must never become a forceful one on
+   * a timer nobody asked for (EPIC-19-S38, EPIC-27-S30), and the honest answer
+   * to an agent that ignores the protocol is the bounded, reported wait
+   * KAR-27.6 built, with `--force` left to the operator.
+   */
   const armEscalation = (): void => {
+    if (ports.escalateUnansweredCancel === false) return;
     turn.escalation = clock.setTimer(ports.cancelGraceMs ?? CANCEL_GRACE_MS, () => {
       turn.escalated = true;
       signalGroup(pgid, 'SIGTERM');

@@ -23,7 +23,13 @@
  * Verifies: EPIC-19-S2 · KAR-19.1 AC5, AC6 · KAR-25.1 · test plan #5
  */
 import type { Event } from '@DeFlow/core';
-import { EVENT_SCHEMAS, parseEvent } from '@DeFlow/core';
+import {
+  cancelWaiting,
+  EVENT_SCHEMAS,
+  initialRunState,
+  parseEvent,
+  runStatusLabel,
+} from '@DeFlow/core';
 import { setActivePinia } from 'pinia';
 import { afterEach, expect, it, describe as suite } from 'vitest';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
@@ -124,6 +130,39 @@ const WAITING_ROW = {
   status: 'needs-human' as const,
   label: 'needs a decision',
   gate: { node: GATE_NODE, options: [{ id: 'approve', label: 'Ship it' }] },
+};
+
+const PARKED_RUN = 'run_20260825T140000Z_c41f9b';
+const PARKED_SINCE = '2026-08-25T14:00:00.000Z';
+
+/**
+ * KAR-27.6 — a run whose cooperative cancel has gone unanswered, exactly as
+ * `GET /api/projects/:id/runs` sends it.
+ *
+ * Both strings come from `@DeFlow/core`'s own `cancelWaiting`, built here
+ * through the same function the daemon builds the row through, so this fixture
+ * cannot quietly become a second wording of the state (AC6).
+ */
+const PARKED_STATE = {
+  ...initialRunState(),
+  status: 'cancelling' as const,
+  cancel: {
+    mode: 'cooperative' as const,
+    requestedSeq: 12,
+    unanswered: {
+      sinceTs: Date.parse(PARKED_SINCE),
+      survivors: [{ node: 'impl-auth', pid: 48_215 }],
+    },
+  },
+};
+
+const PARKED_ROW = {
+  ...LISTED_ROW,
+  runId: PARKED_RUN,
+  status: 'cancelling' as const,
+  label: runStatusLabel(PARKED_STATE),
+  gate: null,
+  cancelWaiting: cancelWaiting(PARKED_STATE, PARKED_RUN),
 };
 
 const rows = (): NodeListOf<HTMLElement> =>
@@ -358,5 +397,50 @@ suite('KAR-25.1 — the accepted gap: a run created elsewhere is not inserted li
     // Give the frame a turn to be applied, if it were going to be.
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(rows()).toHaveLength(0);
+  });
+});
+
+suite('EPIC-27-S28, S29, S31 — a parked cooperative cancel on the run list (KAR-27.6)', () => {
+  it('shows the waiting status, what is still running, and the way out', async () => {
+    const feed = pushableFeed();
+    await mountRunList(listClient([PARKED_ROW]), feed.factory);
+    await expect.poll(() => rows().length).toBe(1);
+
+    // AC1 — the status cell carries the daemon's own sentence, not `cancelling`.
+    const status = shell.container.querySelector<HTMLElement>(`[data-run-status="${PARKED_RUN}"]`);
+    expect(status?.textContent?.trim()).toContain(
+      `the agent has not answered since ${PARKED_SINCE}`,
+    );
+
+    const waiting = shell.container.querySelector<HTMLElement>(
+      `[data-run-cancel-waiting="${PARKED_RUN}"]`,
+    );
+    // AC4 — pid and node, so "what is still running" needs no `ps`.
+    expect(waiting?.textContent).toContain('pid 48215 (impl-auth)');
+    // AC2 — the operator's next move, naming this run.
+    expect(waiting?.textContent).toContain(`deflow cancel ${PARKED_RUN} --force`);
+  });
+
+  /** EPIC-27-S33 — a run nobody cancelled says nothing new. */
+  it('shows no waiting copy on an ordinary run', async () => {
+    const feed = pushableFeed();
+    await mountRunList(listClient([LISTED_ROW]), feed.factory);
+    await expect.poll(() => rows().length).toBe(1);
+
+    expect(shell.container.querySelector('[data-run-cancel-waiting]')).toBeNull();
+  });
+
+  it('drops the waiting copy the moment the ledger says the run ended', async () => {
+    const feed = pushableFeed();
+    await mountRunList(listClient([PARKED_ROW]), feed.factory);
+    await expect.poll(() => rows().length).toBe(1);
+
+    feed.push(
+      lifecycle('run.aborted', PARKED_RUN, 41, { outcome: 'cancelled', criteriaSatisfied: [] }),
+    );
+
+    // A row that kept naming survivors after `run.aborted` would be telling the
+    // operator to `--force` a run that has already stopped.
+    await expect.poll(() => shell.container.querySelector('[data-run-cancel-waiting]')).toBeNull();
   });
 });

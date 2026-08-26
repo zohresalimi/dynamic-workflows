@@ -443,6 +443,21 @@ export interface AcpPorts {
    * tail of the turn is appended rather than lost (§2.5).
    */
   readonly signal?: AbortSignal;
+  /**
+   * KAR-27.9 — whether an unanswered `session/cancel` may climb to §9.4's
+   * stages 2 and 3 on this turn's own timer.
+   *
+   * Defaults to `true`, which is §9.4's ladder and what the conformance harness
+   * measures: an agent that ignores the protocol cancel is a hung child, and a
+   * turn driving one has to be able to end.
+   *
+   * **DeFlowd passes `false`.** An operator's cooperative cancel is never
+   * promoted to a forceful one — EPIC-19-S38 and EPIC-27-S30 — because an
+   * automatic escalation makes `--force` decorative and truncates the transcript
+   * the operator cancelled the run in order to read. On that path the wait is
+   * bounded and reported instead (KAR-27.6) and the operator decides.
+   */
+  readonly escalateUnansweredCancel?: boolean;
   /** How long, on the injected `Clock`, a cancelled agent has to answer
    * before the process group is signalled. */
   readonly cancelGraceMs?: number;

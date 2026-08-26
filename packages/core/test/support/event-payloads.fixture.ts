@@ -159,6 +159,12 @@ export const PAYLOADS: Record<EventKind, unknown> = {
   'run.paused': { by: 'user', reason: 'stepping away' },
   'run.resumed': { by: 'user' },
   'run.cancel.requested': { mode: 'cooperative' },
+  'run.cancel.unanswered': {
+    mode: 'cooperative',
+    requestedTs: 1_754_312_000_000,
+    waitedMs: 60_000,
+    live: [{ node: NODE, attempt: 0, pid: 48_215, pgid: 48_215 }],
+  },
   'run.completed': { outcome: 'succeeded', criteriaSatisfied: ['unit-tests-pass'] },
   'run.aborted': { outcome: 'failed', criteriaSatisfied: [] },
   'run.stalled': { watermarkSeq: 8000, idleMs: 900_000, runningNodes: [NODE] },

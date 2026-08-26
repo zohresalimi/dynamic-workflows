@@ -307,7 +307,7 @@ function project(state: RunState, event: Event): Transition {
     // the operator saying "stop asking nicely", and a sticky first answer would
     // ignore them.
     case 'run.cancel.requested': {
-      const cancel = { mode: event.payload.mode, requestedSeq: seq };
+      const cancel = { mode: event.payload.mode, requestedSeq: seq, unanswered: null };
       if (
         state.status === 'cancelling' &&
         state.cancel?.mode === cancel.mode &&
@@ -316,6 +316,29 @@ function project(state: RunState, event: Event): Transition {
         return null;
       }
       return { ...(withStatus(state, 'cancelling') ?? state), cancel };
+    }
+
+    /**
+     * KAR-27.6 AC1, AC4 — the loop reporting that a cooperative cancel has gone
+     * unanswered past its window, and what is still running under it.
+     *
+     * Folded onto the cancel it describes rather than into a field of its own,
+     * because it is a fact *about that request*: a run cancelled twice — a
+     * cooperative cancel followed by a forceful one — must not wear the first
+     * request's waiting copy while the second one's ladder is running, and
+     * `run.cancel.requested` resetting `cancel` wholesale is what guarantees
+     * that.
+     *
+     * A report and never a promotion: `mode` is untouched here, and the day a
+     * transition in this file changes it, EPIC-19-S38 is broken.
+     */
+    case 'run.cancel.unanswered': {
+      if (state.cancel === null) return null;
+      const unanswered = {
+        sinceTs: event.payload.requestedTs,
+        survivors: event.payload.live.map((one) => ({ node: one.node, pid: one.pid })),
+      };
+      return { ...state, cancel: { ...state.cancel, unanswered } };
     }
 
     case 'run.completed':
