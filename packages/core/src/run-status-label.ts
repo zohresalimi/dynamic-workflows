@@ -35,6 +35,31 @@ import { inFlightPreExecution, type PreExecutionTurnState } from './pre-executio
 import type { RunState, RunStatus } from './run-state.ts';
 
 /**
+ * The five fields of a `RunState` this function reads, and no more.
+ *
+ * Named as a type of its own rather than left as `RunState` because the browser
+ * is one of the three callers and a `RunState` is expensive to *say*. Every
+ * surface that has a status and the run's pre-execution turns but not a whole
+ * folded state used to reach for `initialRunState()` to fill the rest in — and
+ * that function lives in `./run-state.ts`, which is where the zod schemas are,
+ * so naming it pulled the schema graph and zod itself into `packages/web`'s
+ * initial chunk (~35 KB gzip, over NF3's budget; `packages/web/test/integration/
+ * bundle-budget.test.ts` is what caught it).
+ *
+ * A structural `Pick` costs nothing at runtime and is *stricter* than the
+ * spread it replaces: a caller with no cancel record and no stall watermark has
+ * to say so, and the day this function reads a sixth field every such caller
+ * stops compiling instead of silently being handed a default.
+ *
+ * `RunState` satisfies it, so the daemon and the CLI pass their whole state
+ * exactly as before.
+ */
+export type RunStatusLabelInput = Pick<
+  RunState,
+  'status' | 'preExecution' | 'cancel' | 'watermarkSeq' | 'stalledAtSeq'
+>;
+
+/**
  * One label per `RunStatus`, all nine of them, no two alike.
  *
  * A total record rather than a `switch` with a default: a status added to
@@ -62,7 +87,7 @@ export const RUN_STATUS_LABELS: Readonly<Record<RunStatus, string>> = Object.fre
  * and the suffix goes with it. Only a live run carries it — an ended run's last
  * stall is history, and history is not a status.
  */
-function stalled(state: RunState): boolean {
+function stalled(state: RunStatusLabelInput): boolean {
   return (
     state.watermarkSeq > 0 && state.stalledAtSeq === state.watermarkSeq && !ENDED.has(state.status)
   );
@@ -117,14 +142,14 @@ function runningLabel(node: string, turn: PreExecutionTurnState): string {
  * forceful cancel at any point — a forceful cancel does not park; it runs the
  * ladder and reports what outlived it.
  */
-function cancellingLabel(state: RunState): string {
+function cancellingLabel(state: RunStatusLabelInput): string {
   const unanswered = state.cancel?.unanswered;
   if (unanswered === undefined || unanswered === null) return RUN_STATUS_LABELS.cancelling;
   return `${RUN_STATUS_LABELS.cancelling} · ${unansweredCancelClause(unanswered.sinceTs)}`;
 }
 
 /** The status string every surface prints for `state`. */
-export function runStatusLabel(state: RunState): string {
+export function runStatusLabel(state: RunStatusLabelInput): string {
   const live = FRAMEABLE.has(state.status) ? inFlightPreExecution(state.preExecution) : null;
   const label =
     live !== null

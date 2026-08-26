@@ -264,7 +264,7 @@ suite('EPIC-19-S2 — a run already listed updates in place, with no refetch', (
 });
 
 suite('KAR-25.7 AC5, AC7 — a waiting row clears its gate from the ledger, not a refetch', () => {
-  it('clears data-run-gate on the human.responded frame and leaves the status word alone', async () => {
+  it('clears data-run-gate on the human.responded frame, and the word beside it', async () => {
     const client = listClient([WAITING_ROW]);
     const feed = pushableFeed();
     await mountRunList(client, feed.factory);
@@ -288,13 +288,18 @@ suite('KAR-25.7 AC5, AC7 — a waiting row clears its gate from the ledger, not 
     await expect
       .poll(() => shell.container.querySelector(`[data-run-gate="${LISTED_RUN}"]`))
       .toBeNull();
-    // `human.responded` is not a `RunStatus` — the word beside the row is
-    // untouched by this frame; only the gate line goes.
+    // KAR-28.7 — this assertion used to read `needs a decision`, and pinning
+    // that was pinning the defect: `human.responded` is not a `RunStatus`, but
+    // it *ends the wait that produced one*, and a row that kept the sentence
+    // after its gate line went is a row asking for a decision that has been
+    // made. A row this store only met through a hydrate has no earlier status
+    // to restore, so it takes the reducer's own answer to a gate being
+    // answered — the node it suspended goes back to running.
     expect(
       shell.container
         .querySelector<HTMLElement>(`[data-run-status="${LISTED_RUN}"]`)
         ?.textContent?.trim(),
-    ).toBe('needs a decision');
+    ).toBe('running');
     expect(rows()).toHaveLength(1);
     expect(client.calls.length).toBe(fetchesBefore);
   });

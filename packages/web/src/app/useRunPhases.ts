@@ -85,6 +85,22 @@ export function useRunPhases(runId: () => string | null): RunPhasesHandle {
       answer.value = null;
       return;
     }
+    // KAR-28.9 AC1 — a run that has adopted no plan is not asked about.
+    //
+    // `runPhases()` answers `{ basis: 'no-plan', phases: [] }` for a run with no
+    // plan document (`@DeFlow/core`'s `run-phases.ts`), and that is the *only*
+    // answer it can give: the fold has nothing to fold. So the request is a
+    // guaranteed round trip for a value already known here — one per submitted
+    // run, on the screen an operator sits on while the framing turn runs.
+    //
+    // It is a skip and not a debounce: nothing is queued and nothing is
+    // retried. The watcher below fires again the moment the plan arrives,
+    // because `shape` moves from empty to the plan's node ids, and that is the
+    // first tick at which there is a question worth asking (AC2).
+    if (run.planNodes.length === 0) {
+      answer.value = null;
+      return;
+    }
     if (inFlight) {
       again = true;
       return;

@@ -21,13 +21,24 @@
  * `deflow status` and `deflow run` print through (AC6) — so a row this list
  * draws and a line that command prints cannot disagree about one run at one
  * head sequence. A frame that arrives for a run already on screen updates it
- * **in place**, and its label is recomputed from the same table rather than
- * invented here.
+ * **in place**, and its label is recomputed rather than invented here.
+ *
+ * **KAR-28.7 — where "recomputed" now means.** This file used to keep the
+ * status tables themselves, and the frame's status pill imported them from
+ * here. They live in `../lib/run-status.ts` now, which is the one place either
+ * surface decides what status a run is in — see that module's header for why
+ * the client fold survived at all and what was deleted instead.
  */
 import type { CancelWaiting, Event, PendingGateOption, RunStatus } from '@DeFlow/core';
-import { RUN_STATUS_LABELS } from '@DeFlow/core';
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef, triggerRef } from 'vue';
+import {
+  foldRunStatus,
+  RUN_STATUS_BY_KIND,
+  type RunStatusFold,
+  runStatusFoldOf,
+  runStatusViewOf,
+} from '../lib/run-status.ts';
 
 /** One row. The shape `GET /api/runs` answers with, plus nothing. */
 export interface RunListRow {
@@ -63,55 +74,23 @@ export interface RunListRow {
   readonly cancelWaiting: CancelWaiting | null;
 }
 
-/**
- * What each lifecycle kind says about a run's status.
- *
- * The four kinds are the global topic's whole membership (docs/11 §3), so this
- * table is total over what can arrive rather than a subset somebody has to
- * remember to extend. `human.requested` is the one that is *not* a run status —
- * a run waiting on an answer is `needs-human` — and it is here because a run
- * that has stopped to ask is exactly the run an operator scanning this list is
- * looking for.
- */
 /** The two lifecycle kinds that end a run, and therefore end every wait on it. */
 const ENDING: ReadonlySet<string> = new Set(['run.completed', 'run.aborted']);
 
-export const LIFECYCLE_STATUS: Readonly<Record<string, RunStatus>> = {
-  'run.created': 'created',
-  'run.completed': 'completed',
-  'run.aborted': 'aborted',
-  'human.requested': 'needs-human',
-};
-
-/**
- * KAR-27.7 — the four kinds the *control verbs* append, which the global topic
- * does not carry but a single run's own feed does.
- *
- * They are deliberately not folded into `LIFECYCLE_STATUS` above: that table is
- * total over `?runs=*`, and its comment says so, so widening it would make a
- * true sentence false. They are folded *with* it by `useRunStore` — see
- * `RUN_STATUS_BY_KIND` — because a tab watching one run receives every kind on
- * that run, and a pause control that could not see `run.paused` would be a
- * control whose own effect was invisible to it.
- *
- * `run.cancel.requested` reduces to `cancelling` and not to an ended run: the
- * ladder is still running, and `run.aborted` is what says it finished.
- */
-const CONTROL_STATUS: Readonly<Record<string, RunStatus>> = {
-  'run.started': 'running',
-  'run.paused': 'paused',
-  'run.resumed': 'running',
-  'run.cancel.requested': 'cancelling',
-};
-
-/** Every kind that says something about a run's status, on any transport. */
-export const RUN_STATUS_BY_KIND: Readonly<Record<string, RunStatus>> = {
-  ...LIFECYCLE_STATUS,
-  ...CONTROL_STATUS,
-};
-
 export const useRunListStore = defineStore('run-list', () => {
   const rows = shallowRef<RunListRow[]>([]);
+  /**
+   * KAR-28.7 — what each listed run was doing before it stopped to ask, so an
+   * answered gate can put the word back rather than leaving it on
+   * `needs a decision` for the rest of the run.
+   *
+   * A plain `Map` beside the rows rather than a field on one: `RunListRow` is
+   * the shape `GET /api/runs` answers with and nothing else, and this is the
+   * store's own memory between two frames. Cleared with every hydrate, because
+   * a fresh page of the daemon's own answers is not a fold this store has any
+   * business carrying history across.
+   */
+  const folds = new Map<string, RunStatusFold>();
   /** How many `GET /api/runs` requests this store has made. EPIC-19-S2's
    * "no refetch" clause is asserted against it. */
   const fetches = ref(0);
@@ -122,6 +101,7 @@ export const useRunListStore = defineStore('run-list', () => {
   const list = computed<readonly RunListRow[]>(() => rows.value);
 
   function hydrate(page: readonly RunListRow[]): void {
+    folds.clear();
     rows.value = [...page];
     hydrated.value = true;
     fetches.value += 1;
@@ -134,29 +114,37 @@ export const useRunListStore = defineStore('run-list', () => {
    * Returns whether the list changed, so a caller can tell "this frame was for
    * a run I already knew about at this head" from "nothing arrived".
    *
-   * `human.responded` is handled first and separately from the table below —
-   * KAR-25.7 AC5, AC7. It is **not** a `RunStatus` (a run that answers a gate
-   * is still whatever it was: `running`, or `awaiting-spec-approval` until the
-   * follow-on event moves it), so it must not go through `LIFECYCLE_STATUS`
-   * and must not touch `status`/`label`. What it clears is `row.gate`, and
-   * only the ledger clears it: there is no "I already answered" flag anywhere
-   * in this store, on this row or in whatever pressed the button — this frame
+   * `human.responded` is handled first and separately from the table — KAR-25.7
+   * AC5, AC7. It is **not** a `RunStatus`: what it clears is `row.gate`, and
+   * only the ledger clears it — there is no "I already answered" flag anywhere
+   * in this store, on this row or in whatever pressed the button, so this frame
    * is the one and only thing that empties it, for an answer sent from this
    * tab, another tab, or `deflow answer` in a terminal, alike.
+   *
+   * **KAR-28.7 — it moves the word beside the row as well as the gate line.**
+   * It used to clear the gate and deliberately leave `status` and `label`
+   * alone, which left a row that had latched on `human.requested` reading
+   * *needs a decision* for the rest of the run. What the answer restores is
+   * what the run was doing before it asked; `../lib/run-status.ts` is where
+   * both surfaces get that from, and it is the only place either of them gets a
+   * status at all.
    */
   function applyLifecycle(event: Event): boolean {
     if (event.kind === 'human.responded') return clearGate(event);
 
-    const status = LIFECYCLE_STATUS[event.kind];
-    if (status === undefined) return false;
-
     const at = rows.value.findIndex((row) => row.runId === event.runId);
+    const previous = at === -1 ? null : foldFor(event.runId, rows.value[at]);
+    const fold = foldRunStatus(previous, event);
+    if (fold === null || RUN_STATUS_BY_KIND[event.kind] === undefined) return false;
+    folds.set(event.runId, fold);
+    const view = runStatusViewOf(fold.status);
+
     if (at === -1) {
       rows.value = [
         {
           runId: event.runId,
-          status,
-          label: RUN_STATUS_LABELS[status],
+          status: view.status,
+          label: view.label,
           title: titleOf(event) ?? event.runId,
           createdAt: new Date(event.ts).toISOString(),
           headSeq: event.seq,
@@ -180,8 +168,8 @@ export const useRunListStore = defineStore('run-list', () => {
     const next = [...rows.value];
     next[at] = {
       ...current,
-      status,
-      label: RUN_STATUS_LABELS[status],
+      status: view.status,
+      label: view.label,
       title: titleOf(event) ?? current.title,
       headSeq: Math.max(current.headSeq, event.seq),
       // A run that ends stops waiting on anybody, so the gate goes with it —
@@ -223,11 +211,28 @@ export const useRunListStore = defineStore('run-list', () => {
 
     const current = rows.value[at];
     if (current === undefined) return false;
+
+    // KAR-28.7 — the word moves with the gate line. `foldRunStatus` answers
+    // with the status the run held before it stopped to ask; for a row this
+    // store only ever met through a hydrate, that is the daemon's own word,
+    // unchanged.
+    const fold =
+      foldRunStatus(foldFor(event.runId, current), event) ?? runStatusFoldOf(current.status);
+    folds.set(event.runId, fold);
+    const view = runStatusViewOf(fold.status);
+
     const next = [...rows.value];
-    next[at] = { ...current, gate: null };
+    next[at] = { ...current, gate: null, status: view.status, label: view.label };
     rows.value = next;
     triggerRef(rows);
     return true;
+  }
+
+  /** This run's fold, or one seeded from whatever `GET /api/runs` last said. */
+  function foldFor(runId: string, row: RunListRow | undefined): RunStatusFold | null {
+    const held = folds.get(runId);
+    if (held !== undefined) return held;
+    return row === undefined ? null : runStatusFoldOf(row.status);
   }
 
   return { list, rows, fetches, hydrated, hydrate, applyLifecycle };

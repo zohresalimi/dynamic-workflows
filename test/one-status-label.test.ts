@@ -35,7 +35,11 @@ const CALLERS = [
   'packages/cli/src/status.ts',
   'packages/cli/src/run/render.ts',
   'packages/daemon/src/http/run-list.ts',
-  'packages/web/src/stores/useRunListStore.ts',
+  // KAR-28.7 moved the web's side of this out of `stores/useRunListStore.ts`:
+  // the run list and the frame's status pill now share one module, and it is
+  // the module that has to reach the seam. See `./one-run-status-source.ts`'s
+  // sibling guard, which is what keeps it the only one.
+  'packages/web/src/lib/run-status.ts',
 ] as const;
 
 const sources = packageProductionSources().filter((file) => !file.path.endsWith('.test.ts'));

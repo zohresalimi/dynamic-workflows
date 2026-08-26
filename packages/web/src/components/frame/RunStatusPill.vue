@@ -13,14 +13,21 @@
  * `useRunStore.runState` is `@DeFlow/core`'s `RunState` and is filled by
  * `scrubTo()` alone, so on an ordinary tab following a run — the case this
  * pill exists for — it stays `null` for the whole run. Building this component
- * is what found that, and the store now folds the four run-lifecycle kinds
- * into `lifecycleStatus` off `useRunListStore`'s own `LIFECYCLE_STATUS` table.
- * That is the single view-model addition EPIC-24 makes, and it is recorded on
- * the story rather than slipped in: without it the pill is honestly empty on
+ * is what found that, and the store folds the run's own lifecycle frames for
+ * it. That is the single view-model addition EPIC-24 makes, and it is recorded
+ * on the story rather than slipped in: without it the pill is honestly empty on
  * every live tab, which is a frame that does not do the one thing AC5 asks.
  *
- * `runState` is still preferred when it is there, because a *scrubbed* tab is
- * looking at a moment in the past and its pill should say what was true then.
+ * **KAR-28.7 — the status word and the sentence both come from
+ * `useRunStore.statusView`, and this component derives neither.** It used to
+ * look `RUN_STATUS_LABELS[status]` up itself, which had two consequences: the
+ * best it could print for a run in `spec-approved` was the bare word
+ * `planning`, so KAR-27.3's composed *"planner — running · attempt 1 of 3 ·
+ * since <instant>"* could never appear here at all; and the status it looked up
+ * came from a sticky client table on which an answered gate left the run
+ * reading *needs a decision* for the rest of its life. `statusView` is one
+ * derivation, shared with the run-list row, and it goes through
+ * `@DeFlow/core`'s `runStatusLabel` — see `../../lib/run-status.ts`.
  *
  * The dot's colour comes from `RUN_STATUS_DISPLAY` in
  * `../../lib/state-palette.ts`, beside `NODE_STATUS_DISPLAY` — the same mapping
@@ -44,7 +51,6 @@
  * only end the facts offer for an open span.
  */
 import type { RunStatus } from '@DeFlow/core';
-import { RUN_STATUS_LABELS } from '@DeFlow/core';
 import { useIntervalFn } from '@vueuse/core';
 import { computed, ref, watch } from 'vue';
 import { type DisplayState, RUN_STATUS_DISPLAY, stateVar } from '../../lib/state-palette.ts';
@@ -53,10 +59,8 @@ import { formatElapsed } from '../graph/node-body.ts';
 
 const run = useRunStore();
 
-const status = computed<RunStatus | null>(() => run.runState?.status ?? run.lifecycleStatus);
-const label = computed<string | null>(() =>
-  status.value === null ? null : RUN_STATUS_LABELS[status.value],
-);
+const status = computed<RunStatus | null>(() => run.statusView?.status ?? null);
+const label = computed<string | null>(() => run.statusView?.label ?? null);
 const displayState = computed<DisplayState | null>(() =>
   status.value === null ? null : RUN_STATUS_DISPLAY[status.value],
 );

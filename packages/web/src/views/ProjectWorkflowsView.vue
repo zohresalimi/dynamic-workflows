@@ -322,8 +322,9 @@ const startedAt = computed<string | null>(
  */
 const runStatus = computed<RunStatus | null>(() => {
   if (currentRun.value === null) return null;
-  const live =
-    run.runId === currentRun.value ? (run.runState?.status ?? run.lifecycleStatus) : null;
+  // KAR-28.7 — one derivation, the store's, rather than this view choosing
+  // between a scrubbed snapshot and a live fold for itself.
+  const live = run.runId === currentRun.value ? (run.statusView?.status ?? null) : null;
   return live ?? history.value.find((row) => row.runId === currentRun.value)?.status ?? null;
 });
 
@@ -534,14 +535,38 @@ const hidden = (mine: RunPanel): boolean => panel.value !== mine;
           simply paints over it while it is there.
         -->
         <div class="workspace__panel-body">
+          <!--
+            KAR-28.8 AC1 — `inert` beside the `data-hidden` the stylesheet keys
+            off, on both panels.
+
+            The CSS rule at the bottom of this file is what stops the hidden
+            panel being *painted*. `inert` is what stops it being *reached*, and
+            it is here rather than left to `visibility` because the same
+            `NodeWrapper` style object that re-declares `visibility` also writes
+            `pointer-events: all` inline and `tabindex="0"` as an attribute —
+            three per-node declarations this view does not control. `visibility:
+            hidden` happens to answer all three, but AC1 asks for three separate
+            guarantees and resting every one of them on a single cascade race is
+            how the original defect went unnoticed. `inert` is the platform's own
+            answer to two of them and no stylesheet can override it.
+
+            It costs no layout, so the canvas keeps measuring its real box and
+            KAR-28.2 AC5's one-canvas-one-subscription invariant is untouched.
+          -->
           <div
             class="workspace__canvas"
             data-workspace-canvas
             :data-hidden="String(hidden('graph'))"
+            :inert="hidden('graph')"
           >
             <PlanGraphView :run-id="currentRun" />
           </div>
-          <div class="workspace__agents" :data-hidden="String(hidden('agents'))">
+          <div
+            class="workspace__agents"
+            data-workspace-agents
+            :data-hidden="String(hidden('agents'))"
+            :inert="hidden('agents')"
+          >
             <!--
               KAR-28.4 AC4 — a row is a way into the docked inspector.
 
@@ -787,6 +812,55 @@ const hidden = (mine: RunPanel): boolean => panel.value !== mine;
 .workspace__canvas[data-hidden="true"],
 .workspace__agents[data-hidden="true"] {
   visibility: hidden;
+}
+
+/*
+ * KAR-28.8 AC1, AC3 — and the one element that escaped the rule above.
+ *
+ * **The defect.** Observed 2026-08-26: with the Agents panel chosen, six or so
+ * vue-flow node cards were painted *over* the agents table, several of them
+ * half faded. The rule above was doing its job — the canvas container really
+ * did report `visibility: hidden` — and the cards were on screen anyway.
+ *
+ * **The escaping element** is `.vue-flow__node`: the wrapper `div`
+ * `@vue-flow/core`'s `NodeWrapper` renders around every node.
+ *
+ * **Why it escapes.** `NodeWrapper` writes `visibility` as an **inline style**,
+ * `visibility: isInit ? 'visible' : 'hidden'` — its own way of keeping a node
+ * that has not been measured yet from flashing at 0,0. `visibility` is an
+ * inherited property, and inheritance only supplies a value to an element that
+ * declares none of its own, so the moment vue-flow measures a node the node
+ * re-declares itself visible and the ancestor's `hidden` never reaches it. It
+ * is a *JavaScript* declaration, not a stylesheet one, which is why reading
+ * `@vue-flow/core`'s `style.css` for a `visibility` rule finds nothing: the
+ * package's CSS contains none. Both panels share one grid cell
+ * (`.workspace__panel-body > *`, `grid-area: 1 / 1`) and the node is
+ * `position: absolute` with a `z-index`, so an escaped card lands on top of the
+ * agents table rather than beside it.
+ *
+ * **Why the half-faded ones.** Not leftover hover or drag state, which was the
+ * standing hypothesis: this canvas holds no hover state at all. They are
+ * `.is-distant` — `../components/graph/GraphCanvas.vue`'s selection dimming
+ * (`opacity: 0.32`, KAR-17.1 AC7), which applies to every node outside the
+ * selected node's neighbourhood. Pressing an agent row selects a node, so
+ * reading the list is exactly how an operator arrives at a graph where most
+ * cards are dimmed — and `only-render-visible-elements` is why it was six of
+ * the twelve rather than all of them.
+ *
+ * **Why this remedy.** It re-states `visibility: hidden` on precisely the
+ * element that re-declared it, with `!important` so it beats an inline
+ * declaration: an important author declaration outranks a normal inline one, so
+ * this settles the cascade rather than escalating specificity against it. It is
+ * deliberately not a blanket rule over the subtree — the container's own
+ * `visibility` still hides everything that inherits properly, and this names the
+ * single element that does not, so a new escapee shows up as a new bug rather
+ * than being absorbed silently.
+ *
+ * `:deep()` because the node wrapper is the renderer's element, two components
+ * down, and a scoped selector would never reach it.
+ */
+.workspace__canvas[data-hidden="true"] :deep(.vue-flow__node) {
+  visibility: hidden !important;
 }
 
 .workspace__feed {

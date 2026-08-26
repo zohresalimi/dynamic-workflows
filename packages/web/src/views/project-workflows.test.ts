@@ -32,6 +32,7 @@
 import type { Event } from '@DeFlow/core';
 import { setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
+import { userEvent } from 'vitest/browser';
 import { HAPPY_PATH_RUN, happyPath12, stress400 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
 import type { ApiClient } from '../api/client.ts';
@@ -39,6 +40,9 @@ import { startLeakAssertion } from '../app/leak-assert.ts';
 import type { RunFeed, RunFeedFactory, RunFeedOptions } from '../ledger/feed.ts';
 import { DISPLAY_STATES, STATE_LABELS } from '../lib/state-palette.ts';
 import { type RunStoreCounts, useRunStore } from '../stores/useRunStore.ts';
+// KAR-28.8 AC3 — the view's own source, so the recorded diagnosis is asserted
+// rather than hoped for. `?raw` and not `node:fs`: this file runs in Chromium.
+import viewSource from './ProjectWorkflowsView.vue?raw';
 
 const PROJECT_A = 'prj_20260815T101112Z_a1b2c3';
 const PROJECT_B = 'prj_20260815T101113Z_b2c3d4';
@@ -1612,5 +1616,426 @@ suite('EPIC-28-S25 — history moved, not removed', () => {
         row.querySelector('[data-run-link]')?.getAttribute('data-run-link'),
       ),
     ).toEqual([HAPPY_PATH_RUN, EARLIER_RUN]);
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ * KAR-28.9 — a run with no plan neither draws a phases band nor asks for one.
+ *
+ * Verifies: EPIC-28-S37, EPIC-28-S38, EPIC-28-S39 · AC1–AC4 · test plan #1–#3
+ *
+ * Both halves of this are about the *pre-execution* run the suite above never
+ * mounts: `openProjectA()` pours a whole recording in before it asserts
+ * anything, so every spec up to here has a plan on screen by the time it looks.
+ * A run that has been submitted and is still being framed has none — and the
+ * two facts that state ought to have are that nothing is asked for it (there is
+ * one possible answer, `{ basis: 'no-plan', phases: [] }`) and that nothing is
+ * drawn for it.
+ *
+ * The second is a guard rather than a feature: `PhasesBand.vue` has no empty
+ * state of its own, so a change that mounted it on an empty phase list would put
+ * a bare `Phases` header and two empty lists under the agents — and until
+ * EPIC-28-S39 below, the suite would have stayed green through it.
+ * -------------------------------------------------------------------------- */
+
+/** The daemon's answer for a run that has adopted no plan (`run-phases.ts`). */
+const NO_PLAN_ANSWER = { basis: 'no-plan', phases: [] } as const;
+
+/**
+ * Project A open on its live run, with **nothing poured in** — the state
+ * `openProjectA()` passes through on its way to a drawn graph.
+ *
+ * The feed is open and the store's plan is empty, which is what the daemon sees
+ * as `no-plan` and what this story says must not be asked about.
+ */
+async function openProjectAUnframed(): Promise<void> {
+  await mountWorkspace(`/projects/${PROJECT_A}`, {
+    [PROJECT_A]: [LIVE, EARLIER],
+    [PROJECT_B]: [],
+  });
+  await expect.poll(() => feeds.opened.length, { timeout: 15_000 }).toBeGreaterThan(0);
+}
+
+/**
+ * Lets every watcher, request and render the view still had in it finish.
+ *
+ * A request is only *not made* after the tick it would have been made in, so an
+ * assertion of zero has to be given the chance to be wrong; twenty frames is far
+ * past the one flush plus one microtask `useRunPhases` needs.
+ */
+async function settle(): Promise<void> {
+  for (let frame = 0; frame < 20; frame += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+}
+
+suite('EPIC-28-S37 — a plan-less run does not ask for phases', () => {
+  it('makes zero run-summary requests while the run has no plan (AC1)', async () => {
+    phasesAnswer.value = NO_PLAN_ANSWER;
+    await openProjectAUnframed();
+    await settle();
+
+    // The premise: this is a run with no adopted plan, not a run whose plan the
+    // spec merely has not looked at yet.
+    expect(useRunStore().planNodes).toHaveLength(0);
+
+    // Counted, not inferred from the absence of an error or of a band: a
+    // request that was made and answered `no-plan` leaves the screen looking
+    // exactly like one that was never made, and the round trip is the cost.
+    expect(asked.summaryOf).toEqual([]);
+    expect(one('[data-phases-band]')).toBeNull();
+  });
+});
+
+suite('EPIC-28-S38 — adopting a plan asks exactly once', () => {
+  it('asks once the moment the plan arrives, and draws the band (AC2)', async () => {
+    phasesAnswer.value = happyPhases();
+    await openProjectAUnframed();
+    await settle();
+    expect(asked.summaryOf).toEqual([]);
+
+    push(happyPath12());
+    await expect.poll(() => phaseRowsOnScreen().length, { timeout: 15_000 }).toBe(12);
+    await settle();
+
+    // Exactly one. The guard in AC1 delays nothing — the band is on screen —
+    // and drops nothing, and it does not turn the first plan frame into a
+    // second request either.
+    expect(asked.summaryOf).toEqual([HAPPY_PATH_RUN]);
+  });
+});
+
+suite('EPIC-28-S39 — the band’s absence is pinned, not assumed', () => {
+  it('renders no band element at all for a `basis: "no-plan"` answer (AC3)', async () => {
+    // A run whose plan *is* on screen, with the daemon answering `no-plan`
+    // anyway — a build whose projection cannot phase this plan. The request is
+    // therefore made and the answer really is read, which is what makes the
+    // assertion below about the band rather than about the fetch.
+    phasesAnswer.value = NO_PLAN_ANSWER;
+    await openProjectA();
+    await expect.poll(() => asked.summaryOf.length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await settle();
+
+    // KAR-28.6 AC1's absence, pinned. This fails the moment `PhasesBand` is
+    // mounted on an empty phase list, which today renders a bare `Phases`
+    // header and two empty lists.
+    expect(one('[data-phases-band]')).toBeNull();
+    expect(phaseRowsOnScreen()).toHaveLength(0);
+    expect(workRowsOnScreen()).toHaveLength(0);
+    expect(one('[data-runs-link]')).toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- *
+ * KAR-28.8 — the hidden panel stays hidden.
+ *
+ * Verifies: EPIC-28-S32, EPIC-28-S33, EPIC-28-S34, EPIC-28-S35, EPIC-28-S36 ·
+ * AC1–AC6 · test plan #1–#8
+ *
+ * `EPIC-28-S11` above already asserts that the *container* of the panel nobody
+ * chose reports `checkVisibility({ visibilityProperty: true }) === false`. That
+ * assertion is true and was true while the screen was covered in node cards,
+ * which is the whole reason this suite exists: the question is not whether the
+ * container is hidden but whether anything **inside** it re-declares itself
+ * visible, and `visibility` is an inherited property, so exactly one inline
+ * declaration on one descendant is enough to escape.
+ * -------------------------------------------------------------------------- */
+
+/**
+ * The panel at `selector` and everything under it, container included.
+ *
+ * It throws rather than answering `[]` when the panel is not on the page: every
+ * assertion below is of the form "nothing here is painted", and an empty
+ * subtree would satisfy all of them while proving nothing at all.
+ */
+const subtreeOf = (selector: string): Element[] => {
+  const root = one<HTMLElement>(selector);
+  if (root === null) throw new Error(`${selector} is not mounted — the assertion would be vacuous`);
+  const held = [root, ...root.querySelectorAll('*')];
+  if (held.length < 2) throw new Error(`${selector} is empty — the assertion would be vacuous`);
+  return held;
+};
+
+/** The canvas panel and everything under it, container included. */
+const graphSubtree = (): Element[] => subtreeOf('[data-workspace-canvas]');
+
+/** The agent-list panel and everything under it, container included. */
+const agentsSubtree = (): Element[] => subtreeOf('[data-workspace-agents]');
+
+/**
+ * Every element of `subtree` the browser actually paints: it has a box with
+ * area, and the browser itself says it is visible once `visibility`, `opacity`
+ * and `content-visibility` are all taken into account.
+ *
+ * All three options are passed on purpose. The default `checkVisibility()`
+ * looks only at `display` and `content-visibility`, so it answers `true` for a
+ * `visibility: hidden` subtree — and `opacityProperty` is what makes the
+ * *half-faded* cards from the 2026-08-26 screenshot count as the visible things
+ * they are rather than as an acceptable ghost.
+ */
+const painted = (subtree: readonly Element[]): Element[] =>
+  subtree.filter((element) => {
+    const box = element.getBoundingClientRect();
+    if (box.width === 0 || box.height === 0) return false;
+    return element.checkVisibility({
+      visibilityProperty: true,
+      opacityProperty: true,
+      contentVisibilityAuto: true,
+    });
+  });
+
+/** A short, readable description of what was painted, for a failure message. */
+const describePainted = (subtree: readonly Element[]): string =>
+  painted(subtree)
+    .slice(0, 8)
+    .map((element) => `${element.tagName.toLowerCase()}.${element.className || '(no class)'}`)
+    .join(', ');
+
+/** Everything in `subtree` a keyboard or a screen reader could land on. */
+const focusables = (subtree: readonly Element[]): HTMLElement[] =>
+  subtree.filter(
+    (element): element is HTMLElement =>
+      element instanceof HTMLElement &&
+      element.matches('a[href], button, input, select, textarea, [tabindex]'),
+  );
+
+/** Whether any element of `subtree` will accept focus when asked for it. */
+const takesFocus = (subtree: readonly Element[]): HTMLElement[] =>
+  focusables(subtree).filter((element) => {
+    element.focus();
+    const took = document.activeElement === element;
+    element.blur();
+    return took;
+  });
+
+/**
+ * Waits for the renderer to finish its measurement pass.
+ *
+ * `@vue-flow/core`'s `NodeWrapper` writes `visibility` **inline** on every node
+ * — `hidden` until the node has been measured, `visible` afterwards — so a node
+ * asserted on before that flip is invisible for a reason that has nothing to do
+ * with this story. Asserting into that race reports the defect intermittently,
+ * which is a large part of how it survived `EPIC-28-S11` above.
+ *
+ * Bounded and non-fatal on purpose: a renderer that stopped writing the
+ * declaration altogether is not a failure of this helper, it is one of the
+ * outcomes this story would accept.
+ */
+async function canvasMeasured(): Promise<void> {
+  for (let frame = 0; frame < 240; frame += 1) {
+    const wrappers = all('[data-workspace-canvas] .vue-flow__node');
+    if (wrappers.length >= 12 && wrappers.every((node) => node.style.visibility === 'visible')) {
+      return;
+    }
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+}
+
+/**
+ * The element the browser finds at the centre of `box`'s **on-screen** part.
+ *
+ * Clamped rather than taken raw: the workspace is wider than the 414px test
+ * viewport, so a row's own midpoint lies past the right edge and
+ * `elementFromPoint` answers `null` there for every row on the list — an
+ * assertion over hit-testing would then pass by testing nothing.
+ */
+const hitTestCentre = (box: DOMRect): Element | null => {
+  const left = Math.max(box.left, 0);
+  const right = Math.min(box.right, window.innerWidth);
+  const top = Math.max(box.top, 0);
+  const bottom = Math.min(box.bottom, window.innerHeight);
+  if (right <= left || bottom <= top) return null;
+  return document.elementFromPoint((left + right) / 2, (top + bottom) / 2);
+};
+
+/** Scrolls every scrollable box under `root` to its bottom. */
+const scrollToBottom = (root: string): void => {
+  for (const element of [...(one<HTMLElement>(root)?.querySelectorAll<HTMLElement>('*') ?? [])]) {
+    if (element.scrollHeight > element.clientHeight) element.scrollTop = element.scrollHeight;
+  }
+  const box = one<HTMLElement>(root);
+  if (box !== null) box.scrollTop = box.scrollHeight;
+};
+
+/** Selects the graph panel and waits for the canvas to be on screen. */
+async function showGraph(): Promise<void> {
+  one<HTMLElement>('[data-panel-choice="graph"]')?.click();
+  await expect
+    .poll(() => one('[data-workspace-canvas]')?.checkVisibility({ visibilityProperty: true }), {
+      timeout: 15_000,
+    })
+    .toBe(true);
+}
+
+/** Selects the agents panel and waits for the list to be on screen. */
+async function showAgents(): Promise<void> {
+  one<HTMLElement>('[data-panel-choice="agents"]')?.click();
+  await expect
+    .poll(() => one('[data-agent-list]')?.checkVisibility({ visibilityProperty: true }), {
+      timeout: 15_000,
+    })
+    .toBe(true);
+}
+
+suite('EPIC-28-S32 — the graph is not painted over the agents', () => {
+  it('paints nothing from the graph subtree while the agents are chosen', async () => {
+    await openProjectA();
+    await canvasMeasured();
+
+    // The premise: the canvas is mounted, it holds the run's twelve node
+    // bodies, and it is the panel nobody asked for.
+    expect(graphBodies()).toHaveLength(12);
+    expect(one('[data-panel-choice="agents"]')?.getAttribute('aria-pressed')).toBe('true');
+
+    expect(painted(graphSubtree()), `painted: ${describePainted(graphSubtree())}`).toEqual([]);
+  });
+
+  it('still paints nothing after the agent list is scrolled to the bottom', async () => {
+    await openProjectA();
+    await canvasMeasured();
+    scrollToBottom('[data-workspace-agents]');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    expect(painted(graphSubtree()), `painted: ${describePainted(graphSubtree())}`).toEqual([]);
+  });
+});
+
+suite('EPIC-28-S33 — the hidden panel is not reachable either', () => {
+  it('offers no focus stop inside the graph while the agents are chosen', async () => {
+    await openProjectA();
+    await canvasMeasured();
+
+    // Nothing under the canvas will take focus when handed it directly…
+    expect(takesFocus(graphSubtree()).map((element) => element.className)).toEqual([]);
+
+    // …and nothing under it is reached by walking the tab order either. Twenty
+    // stops is well past the agent list's own controls on this recording.
+    const inside = one<HTMLElement>('[data-workspace-canvas]');
+    const landed: string[] = [];
+    for (let stop = 0; stop < 20; stop += 1) {
+      await userEvent.tab();
+      const active = document.activeElement;
+      if (active !== null && inside?.contains(active) === true) landed.push(active.className);
+    }
+    expect(landed).toEqual([]);
+  });
+
+  it('lets every agent row be hit-tested without a node card in the way', async () => {
+    await openProjectA();
+    await canvasMeasured();
+
+    const agents = one<HTMLElement>('[data-workspace-agents]');
+    const canvas = one<HTMLElement>('[data-workspace-canvas]');
+    const swallowed: string[] = [];
+    let tested = 0;
+
+    for (const row of agentRowsOnScreen()) {
+      // Brought onto the screen first: the list is taller than the panel, and a
+      // row hit-tested where it is not would report `null` and prove nothing.
+      // Brought onto the screen first: the list is taller than the panel, and a
+      // row hit-tested where it is not would report `null` and prove nothing.
+      row.scrollIntoView({ block: 'center' });
+      const hit = hitTestCentre(row.getBoundingClientRect());
+      if (hit === null) continue;
+      tested += 1;
+      if (canvas?.contains(hit) === true || agents?.contains(hit) !== true) {
+        swallowed.push(`${row.dataset['agentRow'] ?? '?'} → ${hit.className || hit.tagName}`);
+      }
+    }
+
+    // Without this the loop could skip every row and report nothing swallowed.
+    expect(tested, 'no agent row was on screen to hit-test').toBeGreaterThan(0);
+    expect(swallowed, 'an invisible node card is intercepting clicks').toEqual([]);
+  });
+});
+
+suite('EPIC-28-S34 — no ghosts left behind by the toggle', () => {
+  it('leaves no half-faded card behind when the pointer never left a node', async () => {
+    await openProjectA();
+    await showGraph();
+    await canvasMeasured();
+
+    // A node under the pointer, and a selection — which is what puts every
+    // other node into `is-distant` (opacity 0.32), the state the screenshot
+    // recorded as "half-faded". Pressing an agent row selects a node, so this
+    // is the ordinary way to arrive at the reported screen.
+    const node = one<HTMLElement>('.vue-flow__node');
+    expect(node, 'the canvas must have drawn nodes to hover one').not.toBeNull();
+    node?.dispatchEvent(new MouseEvent('mouseenter', { bubbles: false }));
+    node?.dispatchEvent(new PointerEvent('pointerenter', { bubbles: false }));
+    node?.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+    shell.ui.selectNode('impl-signup');
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    // The faded population is real on this screen — the assertion below is
+    // about those cards and not about an empty set.
+    await expect
+      .poll(() => all('[data-workspace-canvas] .vue-flow__node.is-distant').length, {
+        timeout: 15_000,
+      })
+      .toBeGreaterThan(0);
+
+    // The pointer never leaves; the panel does.
+    await showAgents();
+
+    expect(painted(graphSubtree()), `painted: ${describePainted(graphSubtree())}`).toEqual([]);
+  });
+});
+
+suite('EPIC-28-S35 — the fix does not unmount the canvas', () => {
+  it('keeps one canvas and one subscription across ten toggles', async () => {
+    await openProjectA();
+    const subscriptions = feeds.opened.length;
+
+    for (let round = 0; round < 10; round += 1) {
+      await showGraph();
+      expect(all('.vue-flow')).toHaveLength(1);
+      await showAgents();
+      expect(all('.vue-flow')).toHaveLength(1);
+    }
+
+    expect(feeds.opened).toHaveLength(subscriptions);
+    expect(graphBodies()).toHaveLength(12);
+  });
+});
+
+suite('EPIC-28-S36 — the reverse direction holds too', () => {
+  it('paints, focuses and hit-tests nothing from the agent list under the graph', async () => {
+    await openProjectA();
+    await showGraph();
+    await canvasMeasured();
+
+    expect(painted(agentsSubtree()), `painted: ${describePainted(agentsSubtree())}`).toEqual([]);
+    expect(takesFocus(agentsSubtree()).map((element) => element.className)).toEqual([]);
+
+    // Every node card the graph draws is hit-tested where it is drawn: what
+    // must not happen is the *list* answering there, which is the same defect
+    // in the other direction.
+    const agents = one<HTMLElement>('[data-workspace-agents]');
+    const swallowed: string[] = [];
+    let tested = 0;
+    for (const card of all('[data-workspace-canvas] .vue-flow__node')) {
+      const hit = hitTestCentre(card.getBoundingClientRect());
+      if (hit === null) continue;
+      tested += 1;
+      if (agents?.contains(hit) === true) {
+        swallowed.push(`${card.dataset['id'] ?? '?'} → ${hit.className || hit.tagName}`);
+      }
+    }
+    expect(tested, 'no node card was on screen to hit-test').toBeGreaterThan(0);
+    expect(swallowed, 'the hidden agent list is intercepting clicks on the graph').toEqual([]);
+  });
+});
+
+suite('EPIC-28-S32 — the diagnosis is written down beside the fix', () => {
+  it('names the escaping element, why it escaped, and why the remedy answers it', () => {
+    // AC3. A blanket rule that smothered the subtree would pass every
+    // assertion above and teach the next reader nothing, so the diagnosis is
+    // part of the deliverable: the element, the mechanism, and the reason the
+    // chosen remedy addresses *that* mechanism rather than its symptom.
+    expect(viewSource).toContain('.vue-flow__node');
+    expect(viewSource).toContain('NodeWrapper');
+    expect(viewSource).toContain('inline');
+    expect(viewSource).toContain('is-distant');
   });
 });
