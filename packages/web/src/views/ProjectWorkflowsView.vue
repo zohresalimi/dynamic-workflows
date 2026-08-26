@@ -46,6 +46,7 @@ import { computed, inject, onScopeDispose, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
 import { readToken } from '../api/token.ts';
+import { INSPECTOR_OVERLAY } from '../app/ids.ts';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
 import { openLazyRunsFeed, RUNS_FEED } from '../app/useRunList.ts';
 import GateDecisionCard from '../components/gate/GateDecisionCard.vue';
@@ -620,12 +621,27 @@ const hidden = (mine: RunPanel): boolean => panel.value !== mine;
             <PlanGraphView :run-id="currentRun" />
           </div>
           <div class="workspace__agents" :data-hidden="String(hidden('agents'))">
+            <!--
+              KAR-28.4 AC4 — a row is a way into the docked inspector.
+
+              `inspectNodeById` sets the inspected *and* the selected node, so
+              there is no second `selectNode` call here: the panel and the row
+              highlight cannot end up on different nodes. Opening an overlay
+              that is already open is a no-op, so pressing a second row while
+              the panel is up simply moves it.
+            -->
             <TaskBoard
               :rows="rows"
               :project-id="projectId"
               :run-id="currentRun"
               :selected="ui.selectedNodeId"
               @select="(id: string) => ui.selectNode(id)"
+              @inspect="
+                (id: string) => {
+                  ui.inspectNodeById(id);
+                  ui.openOverlay(INSPECTOR_OVERLAY);
+                }
+              "
             />
           </div>
           <TurnActivityFeed

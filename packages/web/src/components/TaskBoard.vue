@@ -61,6 +61,16 @@
  * a tab and handed to somebody; `test/one-transcript-surface.test.ts` is what
  * stops this file growing a transcript renderer of its own.
  *
+ * ## The step name opens the docked inspector (KAR-28.4 AC4)
+ *
+ * The two controls on a row are the two questions about a node, and they are
+ * deliberately not the same control: `Output` is *"what did it print"* and
+ * goes to the transcript route, the step name is *"what was it given, what did
+ * it cost, why did it fail"* and opens `../NodeInspector.vue` beside the list.
+ * AC4 exists because the inspector used to be reachable only by pressing a
+ * graph node, and on this screen KAR-28.2 put the graph behind a toggle — so
+ * the panel had no way in at all on the surface the operator actually watches.
+ *
  * ## KAR-24.7 — the row this file draws is not a third padding scale
  *
  * `RunListView` restyled the run table to direction C's row density — a
@@ -96,7 +106,19 @@ const props = defineProps<{
   readonly selected?: string | null;
 }>();
 
-const emit = defineEmits<{ select: [id: string] }>();
+const emit = defineEmits<{
+  select: [id: string];
+  /**
+   * KAR-28.4 AC4 — open the docked inspector on this row's node.
+   *
+   * Separate from `select` because they are different asks: selecting a row is
+   * "this is the node I am looking at", opening the inspector is "show me what
+   * it was given and what it produced". An emit rather than a store call for
+   * the same reason `select` is one — this component reads no store, so the
+   * screen it sits on stays the one place that decides what a row press does.
+   */
+  inspect: [id: string];
+}>();
 
 /**
  * Whether this run has a hierarchy at all.
@@ -178,7 +200,20 @@ const nested = computed(() => props.rows.some((row) => row.depth > 0));
             >
               <th scope="row" class="board__step" :style="{ '--board-depth': String(row.depth) }">
                 <span v-if="row.depth > 0" class="board__nest" aria-hidden="true">↳</span>
-                <button type="button" class="board__open" :data-board-open="row.nodeId">
+                <!--
+                  KAR-28.4 AC4 — the step name opens the inspector on this
+                  node, which is how the panel is reachable on a screen where
+                  the canvas is behind the `Agents | Graph` toggle and there is
+                  no node to press. `@click.stop` so the row's own selection
+                  handler does not fire as well: `inspectNodeById` selects the
+                  node anyway, and two handlers agreeing is one too many.
+                -->
+                <button
+                  type="button"
+                  class="board__open"
+                  :data-board-open="row.nodeId"
+                  @click.stop="emit('inspect', row.nodeId)"
+                >
                   <!--
                     The indent, for everyone the indent does not reach. It names
                     the node that spawned this one, which is the fact the
