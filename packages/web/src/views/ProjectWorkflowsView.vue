@@ -19,8 +19,23 @@
  * somewhere in the application and none of it was reachable from a project:
  * the graph is EPIC-17's canvas mounted through `PlanGraphView` (not a second
  * one — `test/one-workspace-surface.test.ts` fails the build if it ever
- * becomes one), the board is the same join in a different shape, and the
- * history is the daemon's own answer for this project.
+ * becomes one), the board is the same join in a different shape, and the band
+ * under them is this run's phases.
+ *
+ * ## Where the history went (KAR-28.6 AC1, AC3)
+ *
+ * It used to be a table of *other runs* under the agents, on the screen whose
+ * whole subject is the run in front of you. It is the Runs view's now
+ * (`/projects/:id/runs`, `./RunListView.vue`) — which is what that view is for,
+ * which already folds both halves of a gate's life for its rows
+ * (`../stores/useRunListStore.ts`), and which is one click from the band's own
+ * header. Moved, not removed: no run's history became unreachable, and this
+ * file stopped keeping a second, hand-rolled copy of that fold.
+ *
+ * `GET /api/projects/:id/runs` is still read here, because *choosing the run*
+ * needs it — the newest run's id, its `createdAt` and its status. What is gone
+ * is the table, and the live gate bookkeeping that existed only to keep the
+ * table's `waiting on …` marker current.
  *
  * ## The four things this file is responsible for
  *
@@ -40,23 +55,22 @@
  *    and holds no array of nodes: the board's rows and the graph's bodies are
  *    one object from `../app/useNodeBodies.ts` (AC3).
  */
-import { type PendingGate, type RunStatus, SPEC_GATE_NODE } from '@DeFlow/core';
+import type { RunStatus } from '@DeFlow/core';
 import { UserRound } from 'lucide-vue-next';
-import { computed, inject, onScopeDispose, ref, watch } from 'vue';
+import { computed, ref, watch } from 'vue';
 import { RouterLink, useRouter } from 'vue-router';
 import { useApiClient } from '../api/provide.ts';
-import { readToken } from '../api/token.ts';
 import { INSPECTOR_OVERLAY } from '../app/ids.ts';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
-import { openLazyRunsFeed, RUNS_FEED } from '../app/useRunList.ts';
+import { useRunPhases } from '../app/useRunPhases.ts';
 import GateDecisionCard from '../components/gate/GateDecisionCard.vue';
 import TurnActivityFeed from '../components/output/TurnActivityFeed.vue';
 import TurnActivityStrip from '../components/output/TurnActivityStrip.vue';
+import PhasesBand from '../components/PhasesBand.vue';
 import RunHeader from '../components/RunHeader.vue';
 import TaskBoard from '../components/TaskBoard.vue';
 import { UiButton, UiEmptyState } from '../components/ui/index.ts';
 import { agentRows } from '../lib/agent-rows.ts';
-import { RUN_STATUS_DISPLAY, stateVar } from '../lib/state-palette.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
 import { RUN_PANELS, type RunPanel, useUiStore } from '../stores/useUiStore.ts';
 import PlanGraphView from './PlanGraphView.vue';
@@ -75,30 +89,20 @@ interface ProjectRow {
   readonly health: { readonly state: string; readonly message: string | null };
 }
 
-/** One row of `GET /api/projects/:id/runs` — the daemon's own list row. */
-interface HistoryRow {
+/**
+ * One row of `GET /api/projects/:id/runs`, in the three fields *choosing the
+ * run* reads.
+ *
+ * The daemon's row carries more — `title`, `label`, `cost` and the `gate` this
+ * run has stopped on — and until KAR-28.6 this file read all of them, for the
+ * history table under the agents. That table is `./RunListView.vue`'s now, and
+ * so is every field only it wanted: declaring them here as well would be a
+ * second, unread copy of a wire shape, which is how the two drift.
+ */
+interface RunChoice {
   readonly runId: string;
   readonly status: RunStatus;
-  /** `runStatusLabel`'s string: the one sentence every surface prints. */
-  readonly label: string;
-  readonly title: string;
   readonly createdAt: string;
-  readonly cost: { readonly run?: { readonly costUsd?: number | null } } | null;
-  /**
-   * KAR-22.5 AC7, KAR-25.7 — the gate this run has stopped on, or `null`.
-   *
-   * `pendingGate`'s own answer, arriving on the row because `runEntry` already
-   * carries it for the global run list (KAR-19.12 AC6). No second query and no
-   * second vocabulary: a run that wants you is findable here without being
-   * opened.
-   *
-   * KAR-25.7 widens this from `{ node: string }` to the daemon's full
-   * `PendingGate`: the options were already on the wire (`runEntry` calls the
-   * same `pendingGate` the run list's row does) and this type simply dropped
-   * them. Carrying them is what lets a waiting row answer through
-   * `../components/gate/GateOptions.vue` without a second request.
-   */
-  readonly gate: PendingGate | null;
 }
 
 /**
@@ -128,7 +132,7 @@ const ui = useUiStore();
 const router = useRouter();
 
 const project = ref<ProjectRow | null>(null);
-const history = ref<readonly HistoryRow[]>([]);
+const history = ref<readonly RunChoice[]>([]);
 const loaded = ref(false);
 
 /**
@@ -158,105 +162,20 @@ const rows = computed(() => agentRows({ bodies: bodies.value, spans: run.timelin
 /** Whether the plan has compiled — the one fact three layout decisions read. */
 const hasPlan = computed(() => bodies.value.size > 0);
 
-/**
- * KAR-25.7 AC3 — the one place `human.responded` reaches this list.
+/*
+ * `openRunsFeed`, `gateFromFrame`, `setHistoryGate` and `applyHistoryGate` used
+ * to live here: a listener on the shared `?runs=*` topic, folding both halves of
+ * a gate's life onto this view's own history rows so a waiting run said
+ * `waiting on …` without a reload (KAR-25.7 AC3).
  *
- * `history` has no subscription of any kind before this story — one
- * `GET /api/projects/:id/runs`, and a waiting row's gate stayed marked
- * "waiting" for the rest of the tab's life, an answer notwithstanding. The
- * `RUNS_FEED` factory this calls is the same one `../app/useRunList.ts`
- * injects and `../app/useApprovals.ts` reuses: in production all three are
- * listeners on the one shared `?runs=*` connection
- * (`../ledger/shared-hub.ts`), so this is not a second socket, only a second
- * fold of a frame that was already arriving.
- *
- * Both halves of a gate's life are read here, `human.requested` as well as
- * `human.responded`. An earlier revision folded only the closing frame, on the
- * stated grounds that "the other four kinds on the topic say nothing about a
- * gate" — which is wrong about exactly one of them: `human.requested` *is* the
- * frame that announces a gate. The effect was a narrower version of the defect
- * this story exists to remove: an operator sitting on a project's history when
- * one of its runs stopped for a decision saw nothing, because the row only ever
- * reflected whatever `GET /api/projects/:id/runs` returned at load. The other
- * three kinds are run statuses, and this view has no status word of its own to
- * keep in step — `row.label` is the daemon's.
+ * KAR-28.6 moved the rows to `./RunListView.vue`, and that view has folded the
+ * same two frames onto the same field since KAR-19.12 — in
+ * `../stores/useRunListStore.ts`, matched by node, with the same "a run this
+ * list has not fetched is not ours" rule. So this was a *second* implementation
+ * of one fold, kept alive only by the table above it; with the table gone it
+ * would be a subscription feeding nothing. The scenario it was written for is
+ * asserted against the Runs view now (`./run-gate-answer.test.ts`).
  */
-const openRunsFeed = inject(RUNS_FEED, openLazyRunsFeed);
-let closeRunsFeed: (() => void) | null = null;
-
-/**
- * The gate a `human.requested` frame opened, in the shape the daemon's own
- * `pendingGate` puts on `GET /api/projects/:id/runs` — so a row updated live
- * and a row loaded from that fetch are the same shape, and
- * `../components/gate/GateOptions.vue` cannot tell them apart.
- *
- * `prompt`, `requestedSeq` and `reason` come off the frame when it carries
- * them and default to the empty answer when it does not, rather than being
- * invented: a live row that renders a shorter prompt than the fetched one
- * would is a row that is honest about what the frame said.
- */
-function gateFromFrame(payload: unknown): PendingGate | null {
-  const frame = payload as {
-    readonly node?: unknown;
-    readonly prompt?: unknown;
-    readonly seq?: unknown;
-    readonly reason?: unknown;
-    readonly options?: readonly { readonly id?: unknown; readonly label?: unknown }[];
-  };
-  if (typeof frame.node !== 'string') return null;
-
-  return {
-    node: frame.node as PendingGate['node'],
-    prompt: typeof frame.prompt === 'string' ? frame.prompt : '',
-    options: (frame.options ?? [])
-      .filter(
-        (option): option is { id: string; label: string } =>
-          typeof option.id === 'string' && typeof option.label === 'string',
-      )
-      .map((option) => ({ id: option.id, label: option.label })),
-    requestedSeq: typeof frame.seq === 'number' ? frame.seq : 0,
-    specApproval: frame.node === SPEC_GATE_NODE,
-    reason: (frame.reason ?? null) as PendingGate['reason'],
-  };
-}
-
-/** Replace one row's `gate`, leaving every other row alone. */
-function setHistoryGate(runId: string, at: number, gate: PendingGate | null): void {
-  const next = [...history.value];
-  const current = next[at];
-  if (current === undefined) return;
-  next[at] = { ...current, gate };
-  history.value = next;
-}
-
-function applyHistoryGate(event: {
-  readonly kind: string;
-  readonly runId: string;
-  readonly payload: unknown;
-}): void {
-  if (event.kind === 'human.requested') {
-    const gate = gateFromFrame(event.payload);
-    if (gate === null) return;
-    const at = history.value.findIndex((row) => row.runId === event.runId);
-    if (at === -1) return; // A run this project's list has not fetched yet.
-    setHistoryGate(event.runId, at, gate);
-    return;
-  }
-
-  if (event.kind !== 'human.responded') return;
-  const node = (event.payload as { readonly node?: unknown }).node;
-  if (typeof node !== 'string') return;
-
-  // Matched by node, not just by run: a run with two open gates keeps the one
-  // that was not answered.
-  const at = history.value.findIndex((row) => row.runId === event.runId && row.gate?.node === node);
-  if (at === -1) return;
-  setHistoryGate(event.runId, at, null);
-}
-
-const runsFeed = openRunsFeed({ token: readToken, onLifecycle: applyHistoryGate });
-closeRunsFeed = () => runsFeed.close();
-onScopeDispose(() => closeRunsFeed?.());
 
 async function load(id: string): Promise<void> {
   const [projects, runs] = await Promise.all([
@@ -271,7 +190,7 @@ async function load(id: string): Promise<void> {
     project.value = listed.find((row) => row.id === id) ?? null;
   }
   if (runs.ok) {
-    history.value = ((await runs.json()) as { runs: readonly HistoryRow[] }).runs;
+    history.value = ((await runs.json()) as { runs: readonly RunChoice[] }).runs;
   }
   loaded.value = true;
 }
@@ -299,37 +218,16 @@ watch(
   { immediate: true },
 );
 
-/** Opens a run of this project. The id travels in the route, never in a field. */
-function openRun(runId: string): void {
-  void router.push({ name: 'project-run', params: { projectId: props.projectId, runId } });
-}
-
-/** `2026-08-15 10:11` — enough to tell two runs apart, in the tab's own zone. */
-function when(iso: string): string {
-  const at = new Date(iso);
-  return Number.isNaN(at.getTime()) ? 'unknown' : at.toLocaleString();
-}
-
-/**
- * What a run cost, in the vocabulary `node-body.ts` uses for the same figure:
- * a price when one was measured, and the words "not priced" when nothing could
- * measure it. Never `$0.00` for a run nobody could price — those are different
- * facts and only one of them is a defect.
+/*
+ * `openRun`, `when`, `spent` and `dotColour` used to live here — the four
+ * helpers the history table needed, and nothing else on this screen ever asked
+ * for. They went with the table (KAR-28.6 AC1): `./RunListView.vue` formats a
+ * run's timestamp and paints its dot for the list that is now the only one, and
+ * a run is opened by pressing its row there rather than by a handler here.
+ *
+ * This file formats nothing again, which is the fourth of the four
+ * responsibilities above and was quietly untrue for two stories.
  */
-function spent(row: HistoryRow): string {
-  const costUsd = row.cost?.run?.costUsd;
-  return typeof costUsd === 'number' ? `$${costUsd.toFixed(2)}` : 'not priced';
-}
-
-/**
- * The history row's dot colour, through the same domain-to-display mapping
- * `RunListView` reads for the run table's own dot (KAR-24.7 AC3, AC4) — never
- * a colour named in this file, and never a second vocabulary for the same
- * run statuses.
- */
-function dotColour(status: RunStatus): string {
-  return stateVar(RUN_STATUS_DISPLAY[status]);
-}
 
 /* ── the redesign's three layout states ─────────────────────────────────── */
 
@@ -374,6 +272,21 @@ const liveTurn = computed(() =>
  * guards. The two share one grid cell and the feed paints over it.
  */
 const showTurnFeed = computed(() => liveTurn.value !== null && !hasPlan.value);
+
+/**
+ * KAR-28.6 AC1 — this run's phases, for the band under the panel.
+ *
+ * The **membership** only: which nodes each top-level step of the plan
+ * materialises, which is `runPhases()`'s answer over the wire (KAR-28.5,
+ * ADR 0018) and is not derivable in the tab, because the plan projection here is
+ * flat and containment is a property of the plan document. The counts and states
+ * beside each phase are folded off the stream by `../lib/phases-band.ts` — see
+ * `../app/useRunPhases.ts` for why fetching those would be a request per frame.
+ */
+const { phases: runPhases } = useRunPhases(() => currentRun.value);
+
+/** The phases themselves, or none: a run with no adopted plan has no band. */
+const phases = computed(() => runPhases.value?.phases ?? []);
 
 /*
  * `planActivity`, `feedStatus`, `pendingPlan`, `hydratingPlan` and `stripped`
@@ -595,8 +508,16 @@ const hidden = (mine: RunPanel): boolean => panel.value !== mine;
             </button>
           </div>
 
+          <!--
+            The plan's version rail — where "what did this run look like at v2"
+            is answered. It is the run scrubber this screen offers, and since
+            KAR-28.6 it is the only one: the history table used to repeat the
+            link per row, and there is no per-row scrubber on the Runs view
+            because a run is opened first and scrubbed from here.
+          -->
           <RouterLink
             class="workspace__graph-link"
+            data-plan-evolution-link
             :to="{ name: 'plan-evolution', params: { projectId, runId: currentRun } }"
             >Evolution</RouterLink
           >
@@ -656,112 +577,26 @@ const hidden = (mine: RunPanel): boolean => panel.value !== mine;
     </template>
 
     <!--
-      KAR-24.7 AC4 — the history is the run table's own shape: the same dense
-      row, the same dot-plus-mono-figures language `RunListView` draws, rather
-      than the six-column baseline grid this section used to invent on its
-      own.
+      KAR-28.6 AC1, AC2 — the band under the primary panel: this run's phases,
+      and the work in the one selected.
+
+      What was here was a table of the *project's other runs* — on the screen
+      whose entire subject is the run in front of you. It is the Runs view's
+      now, and the band's own header is the click that gets there (AC3).
+
+      Mounted only when there is a run and the daemon has phases for it: a run
+      still being framed has adopted no plan, and `basis: 'no-plan'` is an
+      honest empty answer rather than a shape to draw an empty band from.
     -->
-    <section class="workspace__history" aria-labelledby="DeFlow-history-title">
-      <h2 id="DeFlow-history-title" class="workspace__history-title">History</h2>
-
-      <UiEmptyState
-        v-if="history.length === 0"
-        data-workspace-history-empty
-        title="No runs yet"
-        hint="Runs you start in this project appear here."
-      >
-        <template #action>
-          <UiButton
-            variant="ghost"
-            size="sm"
-            data-workspace-history-compose
-            @click="router.push({ name: 'new-run', params: { projectId: props.projectId } })"
-          >
-            Start a run
-          </UiButton>
-        </template>
-      </UiEmptyState>
-
-      <div v-else class="workspace__history-table" data-workspace-history-table>
-        <div class="workspace__history-head" role="row">
-          <span class="workspace__history-head-cell">Run</span>
-          <span class="workspace__history-head-cell">Status</span>
-          <span class="workspace__history-head-cell">Cost</span>
-          <span class="workspace__history-head-cell">Time</span>
-          <span class="workspace__history-head-cell">Scrubber</span>
-        </div>
-
-        <ul class="workspace__history-rows">
-          <li
-            v-for="row in history"
-            :key="row.runId"
-            class="workspace__history-row"
-            :data-history-row="row.runId"
-            :data-current="String(row.runId === currentRun)"
-          >
-            <span class="workspace__history-cell workspace__history-cell--run">
-              <!--
-                A live run's dot animates, same as `RunListView`'s own — the
-                same `pulsering` token, the same reason (KAR-24.7 AC3, AC4).
-              -->
-              <span
-                class="workspace__history-dot"
-                :class="{ 'workspace__history-dot--live': row.status === 'running' }"
-                data-motion-token
-                aria-hidden="true"
-                :style="{ '--history-dot-colour': dotColour(row.status) }"
-              />
-              <!--
-                AC5 — the whole of "without knowing a run id": the operator
-                presses a row. The id is in the route this button pushes and
-                nowhere else.
-              -->
-              <button
-                type="button"
-                class="workspace__history-open"
-                :data-history-open="row.runId"
-                @click="openRun(row.runId)"
-              >
-                {{ row.title }}
-              </button>
-            </span>
-            <span
-              class="workspace__history-cell workspace__history-cell--status"
-              :data-history-outcome="row.runId"
-            >
-              {{ row.label }}
-            </span>
-            <span class="workspace__history-cell workspace__history-cell--cost"
-              >{{ spent(row) }}</span
-            >
-            <span class="workspace__history-cell workspace__history-cell--when"
-              >{{ when(row.createdAt) }}</span
-            >
-            <!--
-              AC4 — and the existing scrubber for it, one link away. The plan's
-              version rail is where "what did this run look like at v2" is
-              answered, and it is EPIC-17's surface rather than a second one here.
-            -->
-            <RouterLink
-              class="workspace__history-cell workspace__history-scrub"
-              :to="{ name: 'plan-evolution', params: { projectId, runId: row.runId } }"
-              :data-run-scrubber="row.runId"
-            >
-              Scrubber
-            </RouterLink>
-            <!--
-              AC7 — and which gate it is waiting on, when it is waiting on one.
-              The row already says `needs a decision`; this says *which*
-              decision, which is the difference between a list you can act on
-              and one you have to open row by row.
-            -->
-            <span v-if="row.gate" class="workspace__history-gate" :data-history-gate="row.runId"
-              >waiting on {{ row.gate.node }}</span
-            >
-          </li>
-        </ul>
-      </div>
-    </section>
+    <PhasesBand
+      v-if="currentRun !== null && phases.length > 0"
+      class="workspace__phases"
+      :phases="phases"
+      :nodes="run.planNodes"
+      :bodies="bodies"
+      :project-id="projectId"
+      :run-id="currentRun"
+    />
   </div>
 </template>
 
@@ -774,8 +609,8 @@ const hidden = (mine: RunPanel): boolean => panel.value !== mine;
  * behind a toggle in the same panel, so a second column would be an empty
  * track — and an empty `2fr` track is how a screen ends up with a graph
  * squeezed into 60% of a window for no reason a reader can see. The middle row
- * still absorbs the height, in every run state, which is what puts the history
- * on the bottom edge (KAR-27.5 AC4).
+ * still absorbs the height, in every run state, which is what puts the phases
+ * band on the bottom edge (KAR-27.5 AC4).
  */
 .workspace {
   display: grid;
@@ -792,14 +627,14 @@ const hidden = (mine: RunPanel): boolean => panel.value !== mine;
  * A `--pending` modifier used to switch this to one column and three `auto`
  * rows while a run had no plan. Three `auto` rows inside a `height: 100%` grid
  * are stretched *equally* by `align-content`'s default — so the free space went
- * into every track rather than into the one that can use it, and the history
- * table ended up floating in the middle of the page with a void above it and
+ * into every track rather than into the one that can use it, and the bottom
+ * band ended up floating in the middle of the page with a void above it and
  * another below. The `minmax(16rem, 1fr)` middle row here is what absorbs the
  * height instead, in every run state, which is also what puts the last row on
  * the bottom edge.
  */
 .workspace__top,
-.workspace__history {
+.workspace__phases {
   grid-column: 1 / -1;
   min-width: 0;
 }
@@ -956,141 +791,6 @@ const hidden = (mine: RunPanel): boolean => panel.value !== mine;
 
 .workspace__feed {
   background: var(--surface);
-}
-
-.workspace__history-title {
-  font-size: var(--text-base);
-  font-weight: 600;
-  margin: 0 0 8px; /* geometry — title-to-table gap */
-}
-
-/*
- * The bordered box direction C's row density lives in — the same shape
- * `RunListView`'s `.run-list__table` and `TaskBoard`'s `.board__frame` use
- * (KAR-24.7 AC4), so a run's history does not read as a third table.
- */
-.workspace__history-table {
-  border: 1px solid var(--edge-strong);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  background: var(--surface);
-  max-height: 12rem;
-  display: flex;
-  flex-direction: column;
-}
-
-.workspace__history-head,
-.workspace__history-row {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 110px 90px 150px 90px;
-  align-items: center;
-  gap: 12px; /* geometry — the row's own gutter */
-}
-
-.workspace__history-head {
-  padding: 6px 14px; /* geometry — the head row's own padding */
-  background: var(--surface-raised);
-  border-bottom: 1px solid var(--edge-strong);
-  flex: none;
-}
-
-.workspace__history-head-cell {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  letter-spacing: 0.1em;
-  color: var(--ink-faint);
-  text-transform: uppercase;
-}
-
-.workspace__history-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  overflow: auto;
-  min-height: 0;
-}
-
-.workspace__history-row {
-  /* ~5px vertical — direction C's row density (KAR-24.7 AC3, AC4). */
-  padding: 5px 14px;
-  font-size: var(--text-sm);
-}
-
-.workspace__history-row + .workspace__history-row {
-  border-top: 1px solid var(--edge);
-}
-
-.workspace__history-row:hover {
-  background: var(--surface-inset);
-}
-
-/*
- * System law 3 — "this is the run you are looking at" is a selection, not a
- * run state. It used to be an 8% mix of `--state-running`, which made the
- * lime mean three things on one page: the primary action, the running status,
- * and the current row.
- */
-.workspace__history-row[data-current="true"] {
-  background: var(--select-tint);
-}
-
-.workspace__history-cell--run {
-  display: flex;
-  align-items: center;
-  gap: 7px; /* geometry — the dot-to-title gutter */
-  min-width: 0;
-}
-
-.workspace__history-dot {
-  width: 5px; /* geometry — direction A's own run-row dot */
-  height: 5px; /* geometry — direction A's own run-row dot */
-  flex: none;
-  border-radius: 50%;
-  background: var(--history-dot-colour);
-}
-
-.workspace__history-dot--live {
-  animation: pulsering 1.8s ease-out infinite;
-}
-
-.workspace__history-open {
-  background: none;
-  border: 0;
-  color: inherit;
-  font: inherit;
-  padding: 0;
-  text-align: left;
-  cursor: pointer;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workspace__history-cell--status {
-  font-family: var(--font-mono);
-  color: var(--ink-muted);
-}
-
-.workspace__history-cell--when,
-.workspace__history-cell--cost {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--ink-faint);
-  font-variant-numeric: tabular-nums;
-}
-
-.workspace__history-scrub {
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  color: var(--ink-muted);
-}
-
-/* A sentence, not a dot: the state is carried by the words (docs/12 §9.2). */
-.workspace__history-gate {
-  grid-column: 1 / -1;
-  margin-top: 4px; /* geometry — the gate line's own offset from the row above it */
-  font-size: var(--text-xs);
-  color: var(--state-awaiting-human);
 }
 
 /*

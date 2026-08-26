@@ -197,6 +197,35 @@ function workItems(
 }
 
 /**
+ * What a phase's work items add up to: its state, and how many are done.
+ *
+ * Exported because KAR-28.6's band folds it a second time. The band gets the
+ * *membership* of each phase from this projection over the wire — containment is
+ * a property of the plan document (`body` templates, inline subgraphs) that the
+ * tab's flat plan projection cannot see — but it cannot get the **counts** that
+ * way, because a refetch per node event is exactly the per-frame request that
+ * screen's design forbids. So it folds the same items' statuses off the stream,
+ * through this function, in the tick they arrive.
+ *
+ * That is one rule with two callers rather than two rules: a band that counted
+ * `completed` its own way would eventually read `3/7` beside a row list showing
+ * four passed nodes, and nothing would say which of them was wrong.
+ */
+export interface PhaseFold {
+  readonly state: PhaseState;
+  readonly completed: number;
+  readonly total: number;
+}
+
+export function foldPhaseItems(statuses: readonly (NodeStatus | undefined)[]): PhaseFold {
+  return {
+    state: phaseState(statuses),
+    completed: statuses.filter((status) => status === 'completed').length,
+    total: statuses.length,
+  };
+}
+
+/**
  * A phase's state from its items' statuses, by a fixed precedence.
  *
  * The last two arms are the ones worth reading. A phase with completed work and
@@ -269,9 +298,7 @@ export function runPhases(state: RunState): RunPhases {
       id: node.id,
       title: node.title,
       type: node.type,
-      state: phaseState(statuses),
-      completed: statuses.filter((status) => status === 'completed').length,
-      total: nodes.length,
+      ...foldPhaseItems(statuses),
       nodes,
     });
   }

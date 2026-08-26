@@ -360,13 +360,19 @@ suite('EPIC-22-S62 — answering resolves the gate live', () => {
     // ledger's own event rather than by its own optimism.
     expect(panel()).not.toBeNull();
 
+    // What this screen has asked of `GET /api/runs/:id` up to here. KAR-28.6's
+    // phases band asks it once, for this run's phase membership; the claim
+    // below is that resolving a gate adds nothing to that, not that the
+    // endpoint is never called.
+    const summaries = (): number =>
+      wire.sent.filter((request) => request.pathname === `/api/runs/${GATED_RUN}`).length;
+    const before = summaries();
+
     push(answered(SPEC_GATE_NODE, 'approve'));
     await expect.poll(() => panel(), { timeout: 15_000 }).toBeNull();
 
     // And nothing re-fetched the run to find that out.
-    expect(wire.sent.filter((request) => request.pathname === `/api/runs/${GATED_RUN}`)).toEqual(
-      [],
-    );
+    expect(summaries()).toBe(before);
   });
 
   it('clears the panel for an answer this tab never sent (AC6)', async () => {
@@ -405,14 +411,23 @@ suite('EPIC-22-S65 — the conflict is the daemon’s sentence, and the buttons 
   });
 });
 
+/**
+ * KAR-28.6 moved this project's run history off the workflows screen and onto
+ * the Runs view, which is the surface it is for — so the list this scenario is
+ * about is one click away rather than under the agents. The claim is unchanged,
+ * and so is the mechanism: `../stores/useRunListStore.ts` folds both halves of a
+ * gate's life exactly as the workflows view used to fold them for its own table.
+ * Only the route the spec looks at moved.
+ */
 suite('EPIC-22-S66 — a waiting run is findable without opening it', () => {
-  it('marks the waiting run in the project’s history and leaves the other alone', async () => {
+  it('marks the waiting run in the project’s run list and leaves the other alone', async () => {
     await openGatedWorkspace();
+    await shell.router.push(`/projects/${PROJECT}/runs`);
 
     await expect
-      .poll(() => one(`[data-history-gate="${GATED_RUN}"]`)?.textContent, { timeout: 15_000 })
+      .poll(() => one(`[data-run-gate="${GATED_RUN}"]`)?.textContent, { timeout: 15_000 })
       .toContain(SPEC_GATE_NODE);
-    expect(one(`[data-history-gate="${QUIET_RUN}"]`)).toBeNull();
+    expect(one(`[data-run-gate="${QUIET_RUN}"]`)).toBeNull();
   });
 });
 
@@ -627,8 +642,10 @@ suite('KAR-25.7 AC3 — the project run history’s gate opens live, from the le
     wire.approvals = [];
     const runsFeed = pushableRunsFeed();
 
+    // The Runs view since KAR-28.6 — see EPIC-22-S66 above for why the route
+    // moved and the claim did not.
     shell = await mountShell({
-      at: `/projects/${PROJECT}`,
+      at: `/projects/${PROJECT}/runs`,
       client: createClient({ baseUrl: `${ORIGIN}/api`, token: () => TEST_TOKEN, fetch: serve }),
       feed: feedFactory,
       runsFeed: runsFeed.factory,
@@ -638,9 +655,9 @@ suite('KAR-25.7 AC3 — the project run history’s gate opens live, from the le
     // QUIET_RUN is in the fetched history with `gate: null` — the state an
     // operator is in when a run they are watching has not stopped yet.
     await expect
-      .poll(() => one(`[data-history-gate="${GATED_RUN}"]`), { timeout: 15_000 })
+      .poll(() => one(`[data-run-gate="${GATED_RUN}"]`), { timeout: 15_000 })
       .not.toBeNull();
-    expect(one(`[data-history-gate="${QUIET_RUN}"]`)).toBeNull();
+    expect(one(`[data-run-gate="${QUIET_RUN}"]`)).toBeNull();
 
     const before = wire.sent.filter((request) => request.pathname.includes('/runs')).length;
 
@@ -668,11 +685,11 @@ suite('KAR-25.7 AC3 — the project run history’s gate opens live, from the le
     );
 
     await expect
-      .poll(() => one(`[data-history-gate="${QUIET_RUN}"]`), { timeout: 15_000 })
+      .poll(() => one(`[data-run-gate="${QUIET_RUN}"]`), { timeout: 15_000 })
       .not.toBeNull();
-    expect(one(`[data-history-gate="${QUIET_RUN}"]`)?.textContent).toContain(PERMISSION_NODE);
+    expect(one(`[data-run-gate="${QUIET_RUN}"]`)?.textContent).toContain(PERMISSION_NODE);
     // The gated row is somebody else's gate and is left exactly as it was.
-    expect(one(`[data-history-gate="${GATED_RUN}"]`)?.textContent).toContain(SPEC_GATE_NODE);
+    expect(one(`[data-run-gate="${GATED_RUN}"]`)?.textContent).toContain(SPEC_GATE_NODE);
     expect(wire.sent.filter((request) => request.pathname.includes('/runs')).length).toBe(before);
   });
 });
@@ -683,7 +700,7 @@ suite('KAR-25.7 AC3 — the project run history’s gate clears live, from the l
     const runsFeed = pushableRunsFeed();
 
     shell = await mountShell({
-      at: `/projects/${PROJECT}`,
+      at: `/projects/${PROJECT}/runs`,
       client: createClient({ baseUrl: `${ORIGIN}/api`, token: () => TEST_TOKEN, fetch: serve }),
       feed: feedFactory,
       runsFeed: runsFeed.factory,
@@ -691,9 +708,9 @@ suite('KAR-25.7 AC3 — the project run history’s gate clears live, from the l
     setActivePinia(shell.pinia);
 
     await expect
-      .poll(() => one(`[data-history-gate="${GATED_RUN}"]`), { timeout: 15_000 })
+      .poll(() => one(`[data-run-gate="${GATED_RUN}"]`), { timeout: 15_000 })
       .not.toBeNull();
-    expect(one(`[data-history-gate="${GATED_RUN}"]`)?.textContent).toContain(SPEC_GATE_NODE);
+    expect(one(`[data-run-gate="${GATED_RUN}"]`)?.textContent).toContain(SPEC_GATE_NODE);
 
     const before = wire.sent.filter((request) => request.pathname.includes('/runs')).length;
 
@@ -701,9 +718,7 @@ suite('KAR-25.7 AC3 — the project run history’s gate clears live, from the l
     // the shared `?runs=*` topic every `human.responded` now rides.
     runsFeed.push(answered(SPEC_GATE_NODE, 'approve'));
 
-    await expect
-      .poll(() => one(`[data-history-gate="${GATED_RUN}"]`), { timeout: 15_000 })
-      .toBeNull();
+    await expect.poll(() => one(`[data-run-gate="${GATED_RUN}"]`), { timeout: 15_000 }).toBeNull();
     expect(wire.sent.filter((request) => request.pathname.includes('/runs')).length).toBe(before);
   });
 });
