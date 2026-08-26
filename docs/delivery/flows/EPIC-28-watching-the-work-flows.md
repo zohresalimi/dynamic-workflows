@@ -140,3 +140,79 @@
 - **Given** the workflows screen
 - **When** the operator looks for previous runs
 - **Then** they are one click away on the Runs view, and no run's history is unreachable.
+
+## KAR-28.7 — The status pill stops latching on a gate it has already answered
+
+**EPIC-28-S26 — an answered gate lets go of the pill**
+- **Given** a run whose status pill reads "needs a decision" after `human.requested`
+- **When** the operator's answer arrives as `human.responded`
+- **Then** in the same tick, and with no refresh and no re-fetch, the pill no longer reads "needs a decision" and reads what the run is actually doing.
+
+**EPIC-28-S27 — approving a spec also releases it**
+- **Given** the same latched pill
+- **When** `run.spec.approved` arrives instead — the path `run_20260826T060745Z_d81b6c` actually took
+- **Then** the pill follows the daemon's `spec-approved` status rather than staying on `needs-human`, which is the status the daemon has been reporting correctly all along.
+
+**EPIC-28-S28 — the run-list row is fixed with the pill, not after it**
+- **Given** the runs list showing a row whose gate is open
+- **When** that gate is answered
+- **Then** the row's status **and** its label both move, rather than only its gate being cleared as `clearGate` does today.
+
+**EPIC-28-S29 — one source of status, and it is total**
+- **Given** the pill and the run-list row on the same run
+- **When** the codebase is inspected
+- **Then** exactly one mapping from run state to status exists in `packages/web`, both surfaces read it, and a guard fails — naming the kind — when a status-changing event kind is added without an answer in it.
+
+**EPIC-28-S30 — the composed pre-execution label reaches the frame**
+- **Given** a run in `spec-approved` with an attempt number and a start instant, for which the daemon composes `planner — running · attempt 1 of 3 · since <instant>`
+- **When** the status pill renders
+- **Then** it shows that composed sentence through `runStatusLabel(state)`, not a bare `planning` from a direct `RUN_STATUS_LABELS` lookup, and `packages/web` invents no second label vocabulary.
+
+**EPIC-28-S31 — the states that already worked still work**
+- **Given** each of `run.created`, `run.started`, `run.paused`, `run.resumed`, `run.cancel.requested`, `run.completed` and `run.aborted`
+- **When** the pill renders after each
+- **Then** the text is byte-identical to today's, and the existing latch-ON assertion at `frame.test.ts:294-301` still passes unchanged.
+
+## KAR-28.8 — The hidden panel stays hidden
+
+**EPIC-28-S32 — the graph is not painted over the agents**
+- **Given** the workflows screen on a run with a compiled plan, with the Agents panel selected
+- **When** the view is inspected
+- **Then** no graph element is visible anywhere over the agents table — not the node cards, their `Pending` pills or their `claude · no model reported` bodies — at the top of the list and after scrolling to the bottom.
+
+**EPIC-28-S33 — the hidden panel is not reachable either**
+- **Given** the Agents panel selected
+- **When** the operator tabs through the view, and when each agent row's centre is hit-tested
+- **Then** no focus stop lands inside the graph subtree and every hit-test returns a list element, so an invisible card can neither take focus nor swallow a click.
+
+**EPIC-28-S34 — no ghosts left behind by the toggle**
+- **Given** a graph node under the pointer, carrying hover or drag state
+- **When** the operator switches to Agents without the node ever receiving a `pointerleave`
+- **Then** no node retains hover or drag state, and none of the half-faded duplicates the 2026-08-26 screenshot recorded appears.
+
+**EPIC-28-S35 — the fix does not unmount the canvas**
+- **Given** the toggle switched between Agents and Graph ten times
+- **When** the canvas and the feed are counted
+- **Then** exactly one canvas has ever existed and the feed subscribed exactly once — KAR-28.2 AC5's invariant, which this story may not spend to buy the hiding.
+
+**EPIC-28-S36 — the reverse direction holds too**
+- **Given** the Graph panel selected
+- **When** the view is inspected
+- **Then** no agent-list element is visible, focusable or hit-testable, so the remedy is symmetric rather than a patch on the one direction somebody happened to look at.
+
+## KAR-28.9 — A run with no plan neither draws a phases band nor asks for one
+
+**EPIC-28-S37 — a plan-less run does not ask for phases**
+- **Given** the workflows view mounted on a run with zero plan nodes, whose only possible phases answer is `{ basis: "no-plan", phases: [] }`
+- **When** the view settles
+- **Then** `useRunPhases` has made zero requests, counted rather than inferred from the absence of an error.
+
+**EPIC-28-S38 — adopting a plan asks exactly once**
+- **Given** that same view, still mounted
+- **When** the run adopts a plan
+- **Then** exactly one phases request is issued and the band appears — the guard delays nothing and drops nothing.
+
+**EPIC-28-S39 — the band's absence is pinned, not assumed**
+- **Given** a phases answer of `{ basis: "no-plan", phases: [] }`
+- **When** the workflows view renders
+- **Then** no band element exists in the DOM — and the assertion fails if `PhasesBand` is ever mounted with an empty phase list, which today would render a bare `Phases` header and two empty lists with the suite still green.

@@ -63,6 +63,13 @@ band needs a projection that does not exist, and it is split into its own story 
 | KAR-28.4 | The inspector docks instead of taking the screen over | M | KAR-28.2 |
 | KAR-28.5 | A phases projection: the run's own shape, from the ledger | M | — |
 | KAR-28.6 | The phases band replaces run history under the agents | M | KAR-28.5, KAR-28.2 |
+| KAR-28.7 *(added)* | The status pill stops latching on a gate it has already answered | M | KAR-28.3, KAR-27.3 |
+| KAR-28.8 *(added)* | The hidden panel stays hidden: no graph elements over the agent list | M | KAR-28.2 |
+| KAR-28.9 *(added)* | A run with no plan neither draws a phases band nor asks for one | S | KAR-28.6 |
+
+*(added)* marks the three stories appended on 2026-08-26 after watching a real run against the
+shipped epic, per [README §9](../README.md#9-changing-the-plan). Each is a defect or a guard gap
+found **in use**, not a new capability: the epic's goal did not move.
 
 ### KAR-28.1 — A pre-execution turn shows its course of actions and decisions
 
@@ -218,6 +225,229 @@ inside the current one, **so that** the screen's lower third is about the run I 
    not carry, per the standing rule against inventing model metadata.
 
 **Execution plan.** TDD after KAR-28.5 lands. Model: opus.
+
+### KAR-28.7 — The status pill stops latching on a gate it has already answered
+
+|                 |                                                                             |
+| --------------- | ----------------------------------------------------------------------------- |
+| **Status**      | Not started                                                                 |
+| **Priority**    | P0                                                                          |
+| **Size**        | M                                                                           |
+| **Depends on**  | KAR-28.3 (the frame's run banners this corrects), KAR-27.3 (the composed pre-execution label this must let through) |
+| **PRD**         | F8.1, F8.4, NF3                                                             |
+| **Verified by** | EPIC-28-S26, EPIC-28-S27, EPIC-28-S28, EPIC-28-S29, EPIC-28-S30, EPIC-28-S31 |
+
+**As** an operator watching a run I have already unblocked, **I want** the status pill to say what
+the run is doing now, **so that** an answered gate does not leave the frame asking me forever for a
+decision I have already made.
+
+**Why now.** Observed 2026-08-26 on a live run, `run_20260826T060745Z_d81b6c`. The web showed a
+status pill reading **"needs a decision"** while the run was, in fact, planning. Folding that run's
+ledger with the repo's own reducer gives the server truth: status `spec-approved`, `needsHuman:
+null`, and the spec gate **answered** — `gate.response` is populated, so `openHumanGates` filters it
+out and `pendingGate` returns `null`. For that state the daemon composes the label `planner —
+running · attempt 1 of 3 · since 2026-08-26T06:16:16.589Z`. Both `GET /api/runs`
+(`packages/daemon/src/http/run-list.ts:167-168`) and `GET /api/runs/:id`
+(`packages/daemon/src/http/run-summary.ts:161`) emit the correct status. **The daemon is not at
+fault.**
+
+The fault is that the web keeps its **own** sticky status table,
+`RUN_STATUS_BY_KIND` in `packages/web/src/stores/useRunListStore.ts:79-111`, covering exactly eight
+event kinds. `human.requested` latches `lifecycleStatus` to `needs-human`
+(`packages/web/src/stores/useRunStore.ts:434-435`). Neither `run.spec.approved` nor
+`human.responded` is in that table, so **nothing can move the status off `needs-human`** until one
+of `run.started` / `run.paused` / `run.resumed` / `run.cancel.requested` / `run.completed` /
+`run.aborted` arrives — and a run emits none of those between spec approval and the planner adopting
+a plan. The events are delivered and are folded into the projections correctly; they simply own no
+status entry. The run-list row carries the identical defect:
+`packages/web/src/stores/useRunListStore.ts:181-193`'s `clearGate` clears `row.gate` and
+deliberately leaves `status` and `label` alone.
+
+**A second, related defect on the same surface.** The pill renders `RUN_STATUS_LABELS[status]`
+directly (`packages/web/src/components/frame/RunStatusPill.vue:58`) rather than `runStatusLabel(state)`
+from `packages/core/src/run-status-label.ts`. So the composed pre-execution label KAR-27.3 built —
+`planner — running · attempt N of M · since <instant>` — can never reach that surface: the best it
+can print for `spec-approved` is a bare `planning`. And `packages/web/src/app/frame.test.ts:294-301`
+pins only the latch **engaging** on `human.requested`; no test anywhere asserts it ever clears.
+
+**Acceptance criteria**
+
+1. A run whose gate has been answered stops reading `needs a decision` on **both** the status pill
+   and the run-list row, within the same tick as the answering event, with no page refresh and no
+   re-fetch: replaying the recorded ledger of `run_20260826T060745Z_d81b6c` through the web's own
+   folding leaves neither surface in `needs-human`.
+2. There is **one** source of a run's status shared by the pill and the run-list row, named in the
+   code, and neither surface re-derives it from a table of its own. Whether that source is the
+   daemon's `status` taken as given or a client table made total over the status-changing kinds is
+   the implementer's call — but the decision is **recorded in the code** with its reason, and the
+   losing option is deleted rather than left in place unused.
+3. If a client-side table survives, it is **total** over the event kinds that change a status, and a
+   guard test fails when a new status-changing kind is added to the reducer without an entry —
+   listing the kind by name. If the daemon's status is taken instead, a guard test fails when a
+   surface reads a status it computed itself.
+4. The composed pre-execution label reaches the surfaces through `runStatusLabel(state)` from
+   `packages/core/src/run-status-label.ts`: for the run above, the pill shows the daemon's own
+   composed sentence (`planner — running · attempt 1 of 3 · since …`) and not a bare `planning`.
+   No second label vocabulary is introduced in `packages/web`.
+5. A test pins the latch **clearing**, not only engaging: `human.requested` followed by
+   `human.responded`, and `human.requested` followed by `run.spec.approved`, each leave the pill and
+   the row off `needs-human`. `frame.test.ts:294-301`'s latch-ON assertion still passes unchanged.
+6. Nothing regresses for the kinds that already worked: `run.created`, `run.started`, `run.paused`,
+   `run.resumed`, `run.cancel.requested`, `run.completed` and `run.aborted` produce the same pill
+   text as they do today, asserted kind by kind.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail.
+
+| #   | Level       | Test                                                                                                                                             | Red when                                                                                                                    |
+| --- | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | unit        | Fold `human.requested` then `human.responded` through `useRunStore`; assert `lifecycleStatus` is no longer `needs-human`                            | `human.responded` owns no status entry, so an answered gate latches the store forever — the observed defect, at its source        |
+| 2   | unit        | Fold `human.requested` then `run.spec.approved`; assert the status follows the daemon's `spec-approved` rather than staying `needs-human`           | The second path off the latch is missing too, so approving a spec leaves the run asking for a decision it already has            |
+| 3   | unit        | Feed `useRunListStore` a `human.requested` then a `human.responded` for the same run; assert `row.status` and `row.label` both moved               | `clearGate` clears the gate and leaves status and label, so the list row keeps the stale sentence after the pill is fixed         |
+| 4   | unit        | Totality guard: every kind the reducer treats as status-changing has an answer in whatever single source AC2 names; the failure lists the kind      | A new event kind is added and silently owns no status, reproducing this bug for a different gate a year from now                  |
+| 5   | unit        | Replay the recorded `run_20260826T060745Z_d81b6c` ledger fixture through the web folding; assert the final pill text is the planner sentence        | The fix passes on synthetic events and still fails on the run that produced the report                                           |
+| 6   | component   | Mount the pill with a `spec-approved` state carrying attempt and `since`; assert it renders `runStatusLabel(state)`'s composed sentence            | The pill reads `RUN_STATUS_LABELS[status]` directly, so KAR-27.3's label can never appear on the frame                            |
+| 7   | component   | Mount the pill for each of the seven kinds that work today; assert the text is byte-identical to today's                                          | Routing the label through `runStatusLabel` quietly reworded the states that were already right                                   |
+| 8   | unit        | Grep-style guard: `packages/web` contains exactly one mapping from run state to status, and `RUN_STATUS_LABELS` is not indexed directly by a view | The two tables both survive the fix and drift apart again, which is the shape of the original defect                              |
+
+**Execution plan.** TDD. Red first at the store, not the component — the latch is a store fact and a
+component test would let a `spec-approved`-shaped prop paper over it. Then the single-source decision
+(AC2) written down, then the pill. No daemon change: the daemon is already correct and this story may
+not touch it. Model: opus implements; sonnet verifies.
+
+### KAR-28.8 — The hidden panel stays hidden: no graph elements over the agent list
+
+|                 |                                                              |
+| --------------- | -------------------------------------------------------------- |
+| **Status**      | Not started                                                  |
+| **Priority**    | P0                                                           |
+| **Size**        | M                                                            |
+| **Depends on**  | KAR-28.2 (the toggle and the one-canvas invariant this must preserve) |
+| **PRD**         | F8.1, F8.2, NF3                                              |
+| **Verified by** | EPIC-28-S32, EPIC-28-S33, EPIC-28-S34, EPIC-28-S35, EPIC-28-S36 |
+
+**As** an operator reading the agent list, **I want** the graph to be gone when I have not asked for
+it, **so that** the list I chose is not covered by cards from the panel I did not.
+
+**Why now.** Observed 2026-08-26, with a screenshot. While the **Agents** panel was selected,
+vue-flow graph node cards were painted **on top of** the agents table — roughly six of them scattered
+across the list, several half-faded, each showing a node title, a `Pending` pill and the
+`claude · no model reported / agent · worktree` body. They overlapped and obscured the table rows.
+
+**The mechanism, as far as it has been established.** KAR-28.2 AC5 deliberately does **not** unmount
+the canvas on a panel change: the canvas owns the run feed, and a `v-if` would close and reopen the
+subscription on every toggle. So both panels live in the **same grid cell** —
+`packages/web/src/views/ProjectWorkflowsView.vue:755-764`, `grid-area: 1 / 1` — and the inactive one
+is hidden with `visibility: hidden` alone
+(`packages/web/src/views/ProjectWorkflowsView.vue:787-790`, with the rationale comment at 340-362).
+The toggle logic itself is correct: `hidden = (mine) => panel.value !== mine`, and the CSS selector
+matches. That approach is sound **only if nothing in the graph subtree escapes visibility
+inheritance** — and something does.
+
+**Already ruled out by reading. Do not redo this; extend it.** There is no `Teleport` and no
+`position: fixed` in `packages/web/src/components/graph/*.vue` or `PlanGraphView.vue`; there is no
+`visibility: visible` override anywhere in `packages/web/src`; and `@vue-flow/core`'s `style.css`
+contains no `visibility` rule at all — it sets `z-index` and `position: absolute` on
+`.vue-flow__node`. **The escaping element has not been identified.** Identifying it is the first job
+of this story and it likely needs a real browser or jsdom repro rather than more static reading. One
+lead worth following: the half-faded duplicates suggest **leftover hover or drag state** on nodes
+whose trigger went invisible without ever receiving a `pointerleave`.
+
+**Acceptance criteria**
+
+1. With the **Agents** panel selected, no graph element is visible, focusable or hit-testable, at any
+   scroll position of the agents table and at any viewport width the screen supports. With **Graph**
+   selected, the reverse holds for the agent list.
+2. KAR-28.2 AC5's invariant is preserved: exactly **one** canvas and **one** subscription exist
+   across any number of toggles, and the canvas is **not** unmounted to achieve AC1. KAR-28.2's own
+   test asserting this still passes, unmodified.
+3. The escaping element is **named** in the fix — which element, why it escaped `visibility:
+   hidden`, and why the chosen remedy addresses that cause — recorded in the code beside the change.
+   A blanket rule that smothers the subtree without naming the cause does not satisfy this criterion.
+4. The half-faded duplicates are accounted for: either the leftover hover/drag hypothesis is
+   confirmed and cleared when the panel loses visibility, or it is disproved in writing and the real
+   cause recorded instead.
+5. A regression test pins that the hidden panel contributes **nothing** — no element with a non-zero
+   rendered box that is visible, nothing reachable by `Tab`, and nothing returned by hit-testing over
+   the visible panel's area — and it fails against the current code before the fix.
+6. Nothing about the toggle's behaviour changes: the choice still persists for the session and both
+   panels still render the same run from the same shared bodies object.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail.
+
+| #   | Level       | Test                                                                                                                                          | Red when                                                                                                                     |
+| --- | ----------- | --------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | browser     | Mount the workflows view on a run with a compiled plan, select Agents, and enumerate every descendant of the graph subtree; assert none is visibly rendered | This is the reported bug and nothing in the suite sees it — it reproduces by hand and passes in CI                            |
+| 2   | browser     | The same, after scrolling the agents table to the bottom                                                                                       | The escape is scroll-position dependent and a top-of-list assertion would call it fixed                                       |
+| 3   | browser     | With Agents selected, `Tab` through the whole view; assert no focus stop lands inside the graph subtree                                        | The cards are invisible to the eye and still in the tab order, so keyboard users walk through a panel that is not on screen   |
+| 4   | browser     | With Agents selected, hit-test the centre of each agent row; assert the element found belongs to the list, not to a node card                  | A card is transparent but still intercepts clicks, so a row's output control silently stops opening                           |
+| 5   | browser     | Hover a graph node, toggle to Agents without a `pointerleave`, and assert no node retains hover or drag state                                  | The half-faded duplicates persist, which is the specific artefact the screenshot shows                                        |
+| 6   | browser     | Toggle Agents → Graph → Agents ten times; assert exactly one canvas ever existed and the feed subscribed exactly once                          | The fix was a `v-if`, which is the one remedy KAR-28.2 AC5 forbids                                                            |
+| 7   | browser     | Select Graph; assert no agent-list element is visible, focusable or hit-testable                                                               | The fix is one-directional and the same defect exists in the other panel, unobserved only because nobody looked               |
+| 8   | unit        | Assert the recorded diagnosis exists: the fix names the escaping element and its cause                                                         | The cause was smothered rather than found, and the next component added to the subtree escapes the same way                   |
+
+**Execution plan.** Diagnose first, in a real browser or jsdom repro — this story may not proceed on
+a guess, because the two cheapest guesses (`Teleport`, `position: fixed`) are already ruled out. Then
+red at AC5's regression test, then the fix. The canvas is not unmounted. Model: opus implements;
+sonnet verifies.
+
+### KAR-28.9 — A run with no plan neither draws a phases band nor asks for one
+
+|                 |                                                    |
+| --------------- | ------------------------------------------------------ |
+| **Status**      | Not started                                        |
+| **Priority**    | P1                                                 |
+| **Size**        | S                                                  |
+| **Depends on**  | KAR-28.6 (the band whose absence this guards), KAR-28.5 (the projection that answers `no-plan`) |
+| **PRD**         | F8.1, NF3                                          |
+| **Verified by** | EPIC-28-S37, EPIC-28-S38, EPIC-28-S39              |
+
+**As** the run surface, **I want** to neither ask for nor draw phases for a run that has no plan,
+**so that** a pre-execution run costs no pointless request and the band's absence is guarded by a
+test rather than by luck.
+
+**Why now.** Found 2026-08-26 while verifying KAR-28.6 against a live pre-execution run. Two small,
+real gaps — and **neither is the symptom the owner reported**: the band was correctly absent before
+the plan compiled and correctly appeared after. KAR-28.6's behaviour is right; what is missing is a
+guard and a guard clause.
+
+**Gap 1 — a guaranteed-useless request.** `packages/web/src/app/useRunPhases.ts:113-122` watches with
+`immediate: true` and issues `GET /api/runs/:id` even when the run has **zero plan nodes**, a state
+in which the only possible answer is `{ basis: "no-plan", phases: [] }`
+(`packages/core/src/run-phases.ts:106`). A plan-less run should not ask.
+
+**Gap 2 — an unguarded behaviour.** `packages/web/src/views/project-workflows.test.ts` never asserts
+the band is **absent** for a `basis: "no-plan"` run: its `phasesAnswer` fixture is only ever set to a
+plan-bearing shape (test lines ~333 and ~1548). And `packages/web/src/components/PhasesBand.vue:104-170`
+has **no internal empty state**, so a future change that mounted it with `phases: []` would render a
+bare `Phases` header and two empty lists — and the suite would still pass. KAR-28.6 AC1 depends on
+that absence.
+
+**Acceptance criteria**
+
+1. A run with no adopted plan issues **no** phases request: mounting the workflows view on a run with
+   zero plan nodes results in zero `GET /api/runs/:id` calls from `useRunPhases`, asserted by call
+   count, not by absence of an error.
+2. The moment a plan is adopted, the request is issued exactly once and the band appears — the guard
+   in AC1 delays nothing and drops nothing.
+3. A test pins the band's **absence** for a `basis: "no-plan"` answer: the fixture is set to
+   `{ basis: "no-plan", phases: [] }` and the assertion is that no band element is rendered. It fails
+   if `PhasesBand` is mounted with an empty phase list.
+4. Nothing else about the band's behaviour changes. KAR-28.6's existing scenarios (EPIC-28-S23,
+   EPIC-28-S24, EPIC-28-S25) pass unmodified, and `PhasesBand.vue`'s rendering for a plan-bearing run
+   is untouched.
+
+**Test plan (TDD)** — write these first, in this order, and watch each fail.
+
+| #   | Level     | Test                                                                                                                                  | Red when                                                                                                         |
+| --- | --------- | --------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| 1   | component | Mount the workflows view on a run with zero plan nodes; assert `useRunPhases` made **zero** fetches                                     | `immediate: true` fires a request whose only possible answer is `no-plan` — one wasted round trip per plan-less run |
+| 2   | component | With the same view mounted, adopt a plan; assert exactly one phases fetch happened and the band rendered                                | The guard is too eager and a run that compiles a plan never asks, so the band never appears at all                 |
+| 3   | component | Set `phasesAnswer` to `{ basis: "no-plan", phases: [] }` and assert no band element exists in the DOM                                   | Nothing pins KAR-28.6 AC1's absence, so a change that mounts the band with an empty list ships a bare `Phases` header |
+
+**Execution plan.** TDD, small. Red at the fetch count first — the request is the observable fact and
+the absent band is the guard around it. Two files touched (`useRunPhases.ts` and
+`project-workflows.test.ts`); if `PhasesBand.vue` needs an empty state as well, that is a decision to
+record, not to slip in. Model: opus implements; sonnet verifies.
 
 ## Scope decisions recorded rather than taken quietly
 
