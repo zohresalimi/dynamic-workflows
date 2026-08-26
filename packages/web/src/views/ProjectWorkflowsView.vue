@@ -54,9 +54,10 @@ import TurnActivityStrip from '../components/output/TurnActivityStrip.vue';
 import RunHeader from '../components/RunHeader.vue';
 import TaskBoard from '../components/TaskBoard.vue';
 import { UiButton, UiEmptyState } from '../components/ui/index.ts';
+import { agentRows } from '../lib/agent-rows.ts';
 import { RUN_STATUS_DISPLAY, stateVar } from '../lib/state-palette.ts';
 import { useRunStore } from '../stores/useRunStore.ts';
-import { useUiStore } from '../stores/useUiStore.ts';
+import { RUN_PANELS, type RunPanel, useUiStore } from '../stores/useUiStore.ts';
 import PlanGraphView from './PlanGraphView.vue';
 
 const props = defineProps<{
@@ -141,7 +142,20 @@ const nothingHasRun = computed(() => loaded.value && history.value.length === 0)
 
 /** The bodies — the same object the graph draws (AC3). */
 const bodies = useNodeBodies();
-const rows = computed(() => [...bodies.value.values()]);
+
+/**
+ * KAR-28.2 AC4 — the agent list's rows, off those very bodies.
+ *
+ * `agentRows` is a pure function of the shared map and the run's own spans, so
+ * the list and the canvas are two shapes of one object rather than two folds of
+ * one log. The spans are the second argument because a `NodeBodyVM` describes a
+ * *node* and the list draws one row per *attempt* — see `../lib/agent-rows.ts`
+ * for why that is the whole point of the story.
+ */
+const rows = computed(() => agentRows({ bodies: bodies.value, spans: run.timelineSpans }));
+
+/** Whether the plan has compiled — the one fact three layout decisions read. */
+const hasPlan = computed(() => bodies.value.size > 0);
 
 /**
  * KAR-25.7 AC3 — the one place `human.responded` reaches this list.
@@ -358,7 +372,7 @@ const liveTurn = computed(() =>
  * supposed to end the wait — the same trap `test/one-workspace-surface.test.ts`
  * guards. The two share one grid cell and the feed paints over it.
  */
-const showTurnFeed = computed(() => liveTurn.value !== null && rows.value.length === 0);
+const showTurnFeed = computed(() => liveTurn.value !== null && !hasPlan.value);
 
 /*
  * `planActivity`, `feedStatus`, `pendingPlan`, `hydratingPlan` and `stripped`
@@ -398,6 +412,40 @@ const runStatus = computed<RunStatus | null>(() => {
     run.runId === currentRun.value ? (run.runState?.status ?? run.lifecycleStatus) : null;
   return live ?? history.value.find((row) => row.runId === currentRun.value)?.status ?? null;
 });
+
+/* ── KAR-28.2 — the primary panel, and the toggle behind it ──────────────── */
+
+/**
+ * What the two choices are called on screen.
+ *
+ * A record over the vocabulary rather than two literals in the template, so
+ * adding a third panel is a type error here instead of a button somebody forgot
+ * to add a label for.
+ */
+const PANEL_LABELS: Record<RunPanel, string> = { agents: 'Agents', graph: 'Graph' };
+
+/**
+ * AC5 — which panel is on screen, from the tab's own store.
+ *
+ * Read rather than held locally, because "persists for the session" is the
+ * whole of the acceptance criterion: a `ref` in this file resets every time the
+ * operator opens a run from the history and comes back.
+ */
+const panel = computed<RunPanel>(() => ui.runPanel);
+
+/**
+ * AC5 — and the invariant the toggle must not break: **one canvas, one
+ * subscription**.
+ *
+ * The canvas is never unmounted for a panel change, only hidden. It owns the
+ * run's feed (`../app/useRunFeed.ts`), so a `v-if` here would close the run's
+ * subscription every time somebody looked at the list — and reopen it, from
+ * scratch, on the way back. `visibility` is what hides it: the box keeps its
+ * real size, so the renderer is not re-measuring a 0×0 viewport on every
+ * toggle, and a hidden subtree is out of the accessibility tree and out of the
+ * tab order by the same rule.
+ */
+const hidden = (mine: RunPanel): boolean => panel.value !== mine;
 </script>
 
 <template>
@@ -482,19 +530,26 @@ const runStatus = computed<RunStatus | null>(() => {
 
     <template v-if="!nothingHasRun && currentRun !== null">
       <!--
-        AC1 — EPIC-17's canvas, mounted rather than reimplemented. It owns the
-        run's feed (`../app/useRunFeed.ts`), so this view opens no
-        subscription of its own and there is exactly one per run.
+        KAR-28.2 AC1, AC5 — the run's one primary panel: the agent list by
+        default, EPIC-17's canvas one toggle away.
 
-        **Never `v-if`d, only collapsed.** Unmounting it would close the run's
-        subscription, and the strip above is shown in exactly the states where
-        the run is still arriving — so a `v-if` here would stop the feed that
-        is supposed to end the wait. `height: 0; overflow: hidden` keeps the
-        one canvas mounted and the one feed open
-        (`test/one-workspace-surface.test.ts` is the guard that says there is
-        only ever one of each).
+        The canvas is mounted rather than reimplemented, and it owns the run's
+        feed (`../app/useRunFeed.ts`), so this view opens no subscription of its
+        own and there is exactly one per run.
+
+        **Never `v-if`d, only hidden.** Unmounting it would close the run's
+        subscription — on every toggle, and in exactly the states where the run
+        is still arriving, so a `v-if` here would stop the feed that is supposed
+        to end the wait. `visibility` keeps the one canvas mounted at its real
+        size and the one feed open (`test/one-workspace-surface.test.ts` is the
+        guard that says there is only ever one of each).
       -->
-      <section class="workspace__graph" data-workspace-plan-panel aria-label="The run's plan graph">
+      <section
+        class="workspace__graph"
+        data-workspace-plan-panel
+        data-run-panel
+        aria-label="The run's agents and plan"
+      >
         <!--
           KAR-27.5 AC2 — the panel's header line, and the one place the live
           strip belongs.
@@ -517,7 +572,28 @@ const runStatus = computed<RunStatus | null>(() => {
             :max-attempts="liveTurn.turn.maxAttempts"
             :since-ts="liveTurn.turn.sinceTs"
           />
-          <h2 v-else class="workspace__graph-title">Plan graph</h2>
+          <h2 v-else class="workspace__graph-title">{{ PANEL_LABELS[panel] }}</h2>
+
+          <!--
+            KAR-28.2 AC5 — the toggle, and it is two real buttons rather than a
+            styled `select`: the choice is between two things that are both on
+            the page's own vocabulary, and `aria-pressed` is what tells a screen
+            reader which one the screen is currently showing.
+          -->
+          <div class="workspace__panels" role="group" aria-label="Panel" data-run-panel-toggle>
+            <button
+              v-for="choice in RUN_PANELS"
+              :key="choice"
+              type="button"
+              class="workspace__panel-choice"
+              :data-panel-choice="choice"
+              :aria-pressed="panel === choice"
+              @click="ui.showRunPanel(choice)"
+            >
+              {{ PANEL_LABELS[choice] }}
+            </button>
+          </div>
+
           <RouterLink
             class="workspace__graph-link"
             :to="{ name: 'plan-evolution', params: { projectId, runId: currentRun } }"
@@ -536,8 +612,21 @@ const runStatus = computed<RunStatus | null>(() => {
           simply paints over it while it is there.
         -->
         <div class="workspace__panel-body">
-          <div class="workspace__canvas">
+          <div
+            class="workspace__canvas"
+            data-workspace-canvas
+            :data-hidden="String(hidden('graph'))"
+          >
             <PlanGraphView :run-id="currentRun" />
+          </div>
+          <div class="workspace__agents" :data-hidden="String(hidden('agents'))">
+            <TaskBoard
+              :rows="rows"
+              :project-id="projectId"
+              :run-id="currentRun"
+              :selected="ui.selectedNodeId"
+              @select="(id: string) => ui.selectNode(id)"
+            />
           </div>
           <TurnActivityFeed
             v-if="showTurnFeed && liveTurn !== null"
@@ -548,14 +637,6 @@ const runStatus = computed<RunStatus | null>(() => {
           />
         </div>
       </section>
-
-      <aside class="workspace__board">
-        <TaskBoard
-          :bodies="rows"
-          :selected="ui.selectedNodeId"
-          @select="(id: string) => ui.selectNode(id)"
-        />
-      </aside>
     </template>
 
     <!--
@@ -669,9 +750,20 @@ const runStatus = computed<RunStatus | null>(() => {
 </template>
 
 <style scoped>
+/*
+ * KAR-28.2 — one column, because there is one panel.
+ *
+ * It was `minmax(0, 3fr) minmax(18rem, 2fr)`: the canvas on the left, the task
+ * board on the right. The list is the primary surface now and the canvas is
+ * behind a toggle in the same panel, so a second column would be an empty
+ * track — and an empty `2fr` track is how a screen ends up with a graph
+ * squeezed into 60% of a window for no reason a reader can see. The middle row
+ * still absorbs the height, in every run state, which is what puts the history
+ * on the bottom edge (KAR-27.5 AC4).
+ */
 .workspace {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(18rem, 2fr);
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(16rem, 1fr) auto;
   gap: 12px; /* geometry — matches the dense sections' own row gap */
   height: 100%;
@@ -769,7 +861,41 @@ const runStatus = computed<RunStatus | null>(() => {
 .workspace__graph-link {
   font-size: var(--text-xs);
   color: var(--ink-faint);
+}
+
+/* KAR-28.2 AC5 — the `Agents | Graph` toggle. Two segments in one bordered
+   box, the shape the design system already spends on a small two-state control;
+   the pressed one takes the application's one selection ground rather than a
+   state hue (system law 3 — selection is hueless). */
+.workspace__panels {
+  display: inline-flex;
   margin-left: auto;
+  border: 1px solid var(--edge-strong);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.workspace__panel-choice {
+  background: none;
+  border: 0;
+  cursor: pointer;
+  color: var(--ink-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  padding: 3px 12px; /* geometry — the segment's own padding */
+}
+
+.workspace__panel-choice + .workspace__panel-choice {
+  border-left: 1px solid var(--edge);
+}
+
+.workspace__panel-choice:hover {
+  color: var(--ink);
+}
+
+.workspace__panel-choice[aria-pressed="true"] {
+  background: var(--select-tint);
+  color: var(--ink);
 }
 
 /* KAR-28.1 — the panel's second row, holding the canvas and the feed in one
@@ -786,18 +912,34 @@ const runStatus = computed<RunStatus | null>(() => {
   min-height: 0;
 }
 
-.workspace__canvas {
+.workspace__canvas,
+.workspace__agents {
   min-height: 0;
   overflow: hidden;
+}
+
+.workspace__agents {
+  padding: 12px; /* geometry — the panel's own inset around the list */
+  background: var(--surface);
+}
+
+/*
+ * KAR-28.2 AC5 — the panel that is not chosen is hidden, never unmounted.
+ *
+ * `visibility` rather than `display: none` on purpose. The canvas measures its
+ * own box, and a `display: none` subtree has no box at all — the renderer would
+ * re-measure from zero on every toggle, which is the flicker `useNodeBodies`'s
+ * memoisation exists to avoid. `visibility: hidden` keeps the geometry, takes
+ * the subtree out of the accessibility tree and out of the tab order, and costs
+ * one property.
+ */
+.workspace__canvas[data-hidden="true"],
+.workspace__agents[data-hidden="true"] {
+  visibility: hidden;
 }
 
 .workspace__feed {
   background: var(--surface);
-}
-
-.workspace__board {
-  min-height: 0;
-  overflow: hidden;
 }
 
 .workspace__history-title {
@@ -936,20 +1078,12 @@ const runStatus = computed<RunStatus | null>(() => {
 }
 
 /*
- * Below 820px the rail is already gone (`../components/frame/AppRail.vue`'s
- * own breakpoint) and this page stops being two columns: the board goes under
- * the graph rather than beside it, bounded so it cannot push the graph off
- * screen entirely. The gate card's own narrow padding is its file's business,
- * not this one's.
+ * The narrow-width rule that used to live here put the board under the graph
+ * below 820px, because the page was two columns. KAR-28.2 made it one — there
+ * is one panel and it fills the width at every size — so a breakpoint that
+ * restates the layout the page already has is a second grid definition waiting
+ * to disagree with the first, which is exactly what KAR-27.5 AC4 removed. The
+ * rail's own breakpoint is still `../components/frame/AppRail.vue`'s business,
+ * and the gate card's narrow padding is its file's.
  */
-@media (max-width: 819px) {
-  .workspace {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(16rem, 1fr) auto auto;
-  }
-
-  .workspace__board {
-    max-height: 40vh;
-  }
-}
 </style>

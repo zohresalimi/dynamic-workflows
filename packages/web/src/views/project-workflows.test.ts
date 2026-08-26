@@ -32,7 +32,7 @@
 import type { Event } from '@DeFlow/core';
 import { setActivePinia } from 'pinia';
 import { afterEach, beforeEach, expect, it, describe as suite } from 'vitest';
-import { HAPPY_PATH_RUN, happyPath12 } from '../../test/fixture-events.ts';
+import { HAPPY_PATH_RUN, happyPath12, stress400 } from '../../test/fixture-events.ts';
 import { type MountedShell, mountShell } from '../../test/shell.ts';
 import type { ApiClient } from '../api/client.ts';
 import { startLeakAssertion } from '../app/leak-assert.ts';
@@ -1039,3 +1039,275 @@ function widePlan(count: number): readonly Event[] {
     } as unknown as Event,
   ];
 }
+
+/* -------------------------------------------------------------------------- *
+ * KAR-28.2 — the agent list is the primary surface; the canvas moves behind a
+ * toggle.
+ *
+ * Verifies: EPIC-28-S07, EPIC-28-S08, EPIC-28-S09, EPIC-28-S10, EPIC-28-S11,
+ * EPIC-28-S12 · AC1–AC6
+ *
+ * The suites above own the *board* — eight facts per row off the shared bodies,
+ * one row per node, never disagreeing with the graph. Those claims all still
+ * hold and none of them is restated here. What is new is that the list is what
+ * the screen shows, that a retried step is more than one row, that a fan-out's
+ * children read as children, and that the canvas is one toggle away and still
+ * exactly one canvas.
+ * -------------------------------------------------------------------------- */
+
+/** Every row of the agent list, attempts included, in the list's own order. */
+const agentRowsOnScreen = (): HTMLElement[] => all('[data-agent-row]');
+
+const rowFor = (key: string): HTMLElement | null => one(`[data-agent-row="${key}"]`);
+
+/**
+ * A plan with a real fan-out, sliced out of the `stress-400` recording.
+ *
+ * The parent, its sibling nodes and the first `children` of its four hundred —
+ * with the daemon's own `mapChildId`-derived ids, because the id *is* the
+ * relationship and a hand-written `parent--child` would only prove that the
+ * spec and the reader agree.
+ */
+function fannedPlan(children: number): readonly Event[] {
+  const proposed = stress400().find((event) => event.kind === 'plan.proposed');
+  if (proposed === undefined) throw new Error('the stress recording must contain a plan');
+  const payload = proposed.payload as { graph: { nodes: readonly { id: string }[] } };
+
+  const isChild = (node: { id: string }): boolean => node.id.startsWith('migrate-views--');
+  const kept = [
+    ...payload.graph.nodes.filter((node) => !isChild(node)),
+    ...payload.graph.nodes.filter(isChild).slice(0, children),
+  ];
+
+  return asRun(
+    [
+      {
+        ...proposed,
+        seq: (happyPath12().at(-1)?.seq ?? 0) + 2000,
+        payload: { ...proposed.payload, graph: { ...payload.graph, nodes: kept } },
+      } as unknown as Event,
+    ],
+    HAPPY_PATH_RUN,
+  );
+}
+
+suite('EPIC-28-S07 — the list is what the screen shows', () => {
+  it('puts the agent list in the primary panel, one row per agent', async () => {
+    await openProjectA();
+    const store = useRunStore(shell.pinia);
+
+    // AC1 — the panel the page is built around, not a column beside the canvas.
+    expect(one('[data-workspace-plan-panel] [data-agent-list]')).not.toBeNull();
+    expect(one('[data-agent-list]')?.getBoundingClientRect().height ?? 0).toBeGreaterThan(0);
+
+    // Every plan node is on it. Two of them ran twice, so there are more rows
+    // than nodes — which is EPIC-28-S08's subject and this line's premise.
+    const listed = new Set(agentRowsOnScreen().map((row) => row.dataset['agentNode']));
+    expect([...listed].toSorted()).toEqual(store.planNodes.map((node) => node.id).toSorted());
+    expect(agentRowsOnScreen().length).toBeGreaterThan(store.planNodes.length);
+  });
+
+  it('carries title, agent, model, state, elapsed and cost on every row', async () => {
+    await openProjectA();
+
+    for (const row of agentRowsOnScreen()) {
+      for (const fact of ['title', 'provider', 'model', 'state', 'elapsed', 'cost']) {
+        // Present *and* non-empty: an empty cell on a status board reads as
+        // "there is nothing to say" rather than as "nobody has said yet", and
+        // `node-body.ts` has a word for each of those.
+        expect(cell(row, fact), `${row.dataset['agentRow']} has no ${fact}`).not.toBe(null);
+        expect(cell(row, fact), `${row.dataset['agentRow']} has an empty ${fact}`).not.toBe('');
+      }
+    }
+  });
+});
+
+suite('EPIC-28-S08 — a retry is its own row', () => {
+  it('shows the failed first attempt and the successful second, both readable', async () => {
+    await openProjectA();
+
+    // `impl-logout` failed on attempt 0 with a timeout and passed on attempt 1.
+    const first = rowFor('impl-logout#0');
+    const second = rowFor('impl-logout#1');
+    expect(first, 'the first attempt must survive the second').not.toBeNull();
+    expect(second).not.toBeNull();
+
+    expect(cell(first as HTMLElement, 'title')).toContain('try #1');
+    expect(cell(second as HTMLElement, 'title')).toContain('try #2');
+    expect(first?.dataset['state']).toBe('failed');
+    expect(second?.dataset['state']).toBe('passed');
+
+    // Still readable: the failed attempt keeps its own duration and its own
+    // state chip, and it is *before* the one that worked, in attempt order.
+    expect(cell(first as HTMLElement, 'elapsed')).not.toBe('not started');
+    expect(first?.querySelector('[data-slot="label"]')?.textContent?.trim()).toBe('Failed');
+    const order = agentRowsOnScreen().map((row) => row.dataset['agentRow']);
+    expect(order.indexOf('impl-logout#0')).toBeLessThan(order.indexOf('impl-logout#1'));
+  });
+
+  it('leaves a step that ran once as one unlabelled row', async () => {
+    await openProjectA();
+    const store = useRunStore(shell.pinia);
+
+    const title = store.planNodes.find((node) => node.id === 'recon-auth-surface')?.title;
+    expect(rowFor('recon-auth-surface#0')).not.toBeNull();
+    expect(cell(rowFor('recon-auth-surface#0') as HTMLElement, 'title')).toBe(title);
+    expect(
+      agentRowsOnScreen().filter((row) => row.dataset['agentNode'] === 'recon-auth-surface'),
+    ).toHaveLength(1);
+  });
+});
+
+suite('EPIC-28-S09 — sub-agents read as sub-agents', () => {
+  it('draws a fan-out’s children under the node that spawned them', async () => {
+    await mountWorkspace(`/projects/${PROJECT_A}`, { [PROJECT_A]: [LIVE], [PROJECT_B]: [] });
+    await expect.poll(() => feeds.opened.length, { timeout: 15_000 }).toBeGreaterThan(0);
+
+    push(fannedPlan(3));
+    await expect.poll(() => agentRowsOnScreen().length, { timeout: 15_000 }).toBeGreaterThan(3);
+
+    const parent = agentRowsOnScreen().findIndex(
+      (row) => row.dataset['agentNode'] === 'migrate-views',
+    );
+    expect(parent).toBeGreaterThanOrEqual(0);
+
+    const kids = agentRowsOnScreen().slice(parent + 1, parent + 4);
+    expect(kids.map((row) => row.dataset['agentNode'])).toEqual(
+      kids.map((row) => row.dataset['agentNode']).filter((id) => id?.startsWith('migrate-views--')),
+    );
+    for (const kid of kids) {
+      expect(kid.dataset['agentDepth']).toBe('1');
+      expect(kid.dataset['agentParent']).toBe('migrate-views');
+    }
+    // Subordinate to a reader who cannot see the indent, too.
+    expect(kids[0]?.textContent).toContain('migrate-views');
+    expect(one('[data-agent-list]')?.dataset['agentNested']).toBe('true');
+  });
+
+  it('renders a run with no fan-out flat, with no empty hierarchy chrome', async () => {
+    await openProjectA();
+
+    expect(agentRowsOnScreen().every((row) => row.dataset['agentDepth'] === '0')).toBe(true);
+    expect(all('[data-agent-parent]')).toHaveLength(0);
+    expect(one('[data-agent-list]')?.dataset['agentNested']).toBe('false');
+  });
+});
+
+suite('EPIC-28-S10 — every row can be opened', () => {
+  it('offers an output control on every row, pointing at the existing route', async () => {
+    await openProjectA();
+
+    const controls = all('[data-board-output]');
+    expect(controls).toHaveLength(agentRowsOnScreen().length);
+
+    for (const row of agentRowsOnScreen()) {
+      const node = row.dataset['agentNode'];
+      const control = row.querySelector('[data-board-output]');
+      // The route EPIC-17 already built, and not a renderer of this list's own:
+      // `test/one-transcript-surface.test.ts` is the half of AC3 that says
+      // there is no second one anywhere in the tree.
+      expect(control?.getAttribute('href')).toBe(
+        `/projects/${PROJECT_A}/runs/${HAPPY_PATH_RUN}/nodes/${node}/output`,
+      );
+    }
+  });
+
+  it('opens that node’s transcript when the control is used', async () => {
+    await openProjectA();
+
+    one<HTMLElement>('[data-agent-row="impl-signup#0"] [data-board-output]')?.click();
+
+    await expect
+      .poll(() => shell.router.currentRoute.value.name, { timeout: 15_000 })
+      .toBe('run-node-output');
+    expect(shell.router.currentRoute.value.params['nodeId']).toBe('impl-signup');
+  });
+});
+
+suite('EPIC-28-S11 — the graph is one toggle away, and still one canvas', () => {
+  it('switches panels, keeps one canvas and one subscription, and remembers', async () => {
+    await openProjectA();
+    const subscriptions = feeds.opened.length;
+
+    // `visibilityProperty` on purpose: the panel that is not chosen is hidden
+    // with `visibility`, and the default `checkVisibility()` — which only looks
+    // at `display` and `content-visibility` — would say `true` for both panels
+    // and assert nothing at all.
+    const shown = (selector: string): boolean | undefined =>
+      one(selector)?.checkVisibility({ visibilityProperty: true });
+
+    // The list is the default, and the canvas is mounted behind it — never
+    // unmounted, because it owns the run's feed.
+    expect(shown('[data-agent-list]')).toBe(true);
+    expect(shown('[data-workspace-canvas]')).toBe(false);
+    expect(all('.vue-flow')).toHaveLength(1);
+
+    one<HTMLElement>('[data-panel-choice="graph"]')?.click();
+    await expect.poll(() => shown('[data-workspace-canvas]'), { timeout: 15_000 }).toBe(true);
+    expect(shown('[data-agent-list]')).toBe(false);
+    expect(one('[data-panel-choice="graph"]')?.getAttribute('aria-pressed')).toBe('true');
+
+    // The same run, and nothing was opened or torn down to show it.
+    expect(all('.vue-flow')).toHaveLength(1);
+    expect(feeds.opened).toHaveLength(subscriptions);
+    expect(graphBodies()).toHaveLength(12);
+
+    one<HTMLElement>('[data-panel-choice="agents"]')?.click();
+    await expect.poll(() => shown('[data-agent-list]'), { timeout: 15_000 }).toBe(true);
+    expect(shown('[data-workspace-canvas]')).toBe(false);
+    expect(all('.vue-flow')).toHaveLength(1);
+    expect(feeds.opened).toHaveLength(subscriptions);
+  });
+
+  it('holds the choice for the session, across a route change', async () => {
+    await openProjectA();
+
+    one<HTMLElement>('[data-panel-choice="graph"]')?.click();
+    await expect
+      .poll(() => one('[data-panel-choice="graph"]')?.getAttribute('aria-pressed'), {
+        timeout: 15_000,
+      })
+      .toBe('true');
+
+    await shell.router.push('/projects');
+    await expect.poll(() => one('[data-agent-list]'), { timeout: 15_000 }).toBeNull();
+    await shell.router.push(`/projects/${PROJECT_A}`);
+
+    // Back on the screen, still on the graph: a toggle that resets on every
+    // navigation is a toggle nobody uses twice.
+    await expect
+      .poll(() => one('[data-panel-choice="graph"]')?.getAttribute('aria-pressed'), {
+        timeout: 15_000,
+      })
+      .toBe('true');
+    expect(one('[data-panel-choice="agents"]')?.getAttribute('aria-pressed')).toBe('false');
+  });
+});
+
+suite('EPIC-28-S12 — one model, two surfaces', () => {
+  it('moves both on one frame, printing every figure the same way', async () => {
+    await openProjectA();
+
+    const agree = (id: string, where: string): void => {
+      const row = rowFor(`${id}#0`);
+      const body = one(`[data-plan-node="${id}"]`);
+      expect(row?.dataset['state'], `${where}: ${id} state`).toBe(body?.dataset['state']);
+      expect(cell(row as HTMLElement, 'elapsed'), `${where}: ${id} elapsed`).toBe(
+        body?.querySelector('[data-slot="elapsed"]')?.textContent?.trim(),
+      );
+      expect(cell(row as HTMLElement, 'cost'), `${where}: ${id} cost`).toBe(
+        body?.querySelector('[data-slot="cost"]')?.textContent?.trim(),
+      );
+    };
+
+    agree('smoke-tests', 'before');
+
+    push([started('smoke-tests', 1)]);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+
+    // One shared bodies object means the change is on both surfaces in the same
+    // tick, with no second fold and no second formatter.
+    agree('smoke-tests', 'after');
+    expect(rowFor('smoke-tests#0')?.dataset['state']).toBe('running');
+  });
+});

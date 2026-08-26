@@ -35,6 +35,7 @@ import compactionRaw from '../../../test/fixtures/runs/compaction/events.jsonl?r
 import gateRepairRaw from '../../../test/fixtures/runs/gate-failure-repair/events.jsonl?raw';
 import happyRaw from '../../../test/fixtures/runs/happy-path-12/events.jsonl?raw';
 import repairRaw from '../../../test/fixtures/runs/repair-attempts/events.jsonl?raw';
+import stressRaw from '../../../test/fixtures/runs/stress-400/events.jsonl?raw';
 
 /** The run the `happy-path-12` recording belongs to. */
 export const HAPPY_PATH_RUN = 'run_20260811T090000Z_a1b2c3';
@@ -80,6 +81,22 @@ export const repairAttempts = (): readonly Event[] => parse('repair-attempts', r
 
 /** Every event of `compaction`, in `seq` order, parsed. */
 export const compactionRun = (): readonly Event[] => parse('compaction', compactionRaw);
+
+/**
+ * Every event of `stress-400`, in `seq` order, parsed.
+ *
+ * KAR-28.2's fixture, and the only recording in the repository with a
+ * **hierarchy**: a `map` node (`migrate-views`) whose four hundred children were
+ * materialised into the plan as real nodes named by `@DeFlow/core`'s
+ * `mapChildId` — `migrate-views--9ef9d69b`, and so on for four hundred.
+ * EPIC-28-S09 asks whether a sub-agent reads as subordinate to the node that
+ * spawned it, and this is the only ledger where one does.
+ *
+ * A spec that wants the shape without the four hundred rows slices this plan
+ * rather than hand-writing a fan-out that agrees with its author's idea of one:
+ * the ids are the relationship, so they have to be the ids the daemon derives.
+ */
+export const stress400 = (): readonly Event[] => parse('stress-400', stressRaw);
 
 /**
  * Every event of `gate-failure-repair`, in `seq` order, parsed.

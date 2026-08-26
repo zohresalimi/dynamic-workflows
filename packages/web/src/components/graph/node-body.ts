@@ -169,8 +169,16 @@ export function formatElapsed(ms: number): string {
  * `null` — no tier has priced this at all — is `not priced` rather than
  * `$0.00`: a node that cost nothing and a node nobody could price are not the
  * same node, and only one of them is a defect.
+ *
+ * KAR-28.2 widened the parameter from `CostFigures` to the two figures it
+ * actually reads, so an **attempt**'s own money — `SpanVM.costUsd`, which
+ * carries these two and no subscription or API-key path — is printed by this
+ * function rather than by a second one in the agent list. A `CostFigures` still
+ * satisfies it; nothing at any existing call site changed.
  */
-export function formatSpend(spend: CostFigures | null): string {
+export function formatSpend(
+  spend: Pick<CostFigures, 'estimated' | 'vendorReported'> | null,
+): string {
   if (spend === null) return NOT_PRICED;
   if (spend.vendorReported !== null) return `$${spend.vendorReported.toFixed(2)}`;
   if (spend.estimated !== null) return `~$${spend.estimated.toFixed(2)}`;

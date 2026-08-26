@@ -32,10 +32,38 @@ export interface GraphNode {
   readonly status: NodeStatus;
 }
 
+/**
+ * KAR-28.2 AC5 — the two things the workflows screen's primary panel can be.
+ *
+ * A closed vocabulary rather than a boolean, because `graph: false` is not a
+ * description of a screen and a third panel would arrive as a second boolean
+ * that can disagree with the first.
+ */
+export const RUN_PANELS = ['agents', 'graph'] as const;
+
+export type RunPanel = (typeof RUN_PANELS)[number];
+
 export const useUiStore = defineStore('ui', () => {
   const nodes = shallowRef<readonly GraphNode[]>([]);
   const selectedNodeId = ref<string | null>(null);
   const inspectedNodeId = ref<string | null>(null);
+
+  /**
+   * KAR-28.2 AC5 — which panel the workflows screen is showing.
+   *
+   * `agents` by default, which is the decision the story records: the list is
+   * what the screen shows, and dependency shape is occasionally the right
+   * question rather than the default one.
+   *
+   * It belongs here for exactly the reason at the top of this file — it is a
+   * fact about *this tab*, it belongs to nobody's ledger, and the run store
+   * next door may hold nothing that did not arrive as an event. "Persists for
+   * the session" is what this store already is: the choice survives every
+   * navigation inside the application, including leaving the screen and coming
+   * back, and it does not survive a reload, where the run is being rebuilt from
+   * its ledger anyway.
+   */
+  const runPanel = ref<RunPanel>('agents');
 
   /**
    * Which attempt of the inspected node the panel is showing, or `null` for
@@ -130,6 +158,11 @@ export const useUiStore = defineStore('ui', () => {
 
   function selectNode(id: string | null): void {
     selectedNodeId.value = id;
+  }
+
+  /** KAR-28.2 AC5 — the operator chose a panel. */
+  function showRunPanel(panel: RunPanel): void {
+    runPanel.value = panel;
   }
 
   /**
@@ -235,6 +268,8 @@ export const useUiStore = defineStore('ui', () => {
     planVersions,
     planVersion,
     planMove,
+    runPanel,
+    showRunPanel,
     screenReaderMode,
     setScreenReaderMode,
     stateOf,
