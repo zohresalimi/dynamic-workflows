@@ -1620,6 +1620,113 @@ suite('EPIC-28-S25 — history moved, not removed', () => {
 });
 
 /* -------------------------------------------------------------------------- *
+ * KAR-28.9 — a run with no plan neither draws a phases band nor asks for one.
+ *
+ * Verifies: EPIC-28-S37, EPIC-28-S38, EPIC-28-S39 · AC1–AC4 · test plan #1–#3
+ *
+ * Both halves of this are about the *pre-execution* run the suite above never
+ * mounts: `openProjectA()` pours a whole recording in before it asserts
+ * anything, so every spec up to here has a plan on screen by the time it looks.
+ * A run that has been submitted and is still being framed has none — and the
+ * two facts that state ought to have are that nothing is asked for it (there is
+ * one possible answer, `{ basis: 'no-plan', phases: [] }`) and that nothing is
+ * drawn for it.
+ *
+ * The second is a guard rather than a feature: `PhasesBand.vue` has no empty
+ * state of its own, so a change that mounted it on an empty phase list would put
+ * a bare `Phases` header and two empty lists under the agents — and until
+ * EPIC-28-S39 below, the suite would have stayed green through it.
+ * -------------------------------------------------------------------------- */
+
+/** The daemon's answer for a run that has adopted no plan (`run-phases.ts`). */
+const NO_PLAN_ANSWER = { basis: 'no-plan', phases: [] } as const;
+
+/**
+ * Project A open on its live run, with **nothing poured in** — the state
+ * `openProjectA()` passes through on its way to a drawn graph.
+ *
+ * The feed is open and the store's plan is empty, which is what the daemon sees
+ * as `no-plan` and what this story says must not be asked about.
+ */
+async function openProjectAUnframed(): Promise<void> {
+  await mountWorkspace(`/projects/${PROJECT_A}`, {
+    [PROJECT_A]: [LIVE, EARLIER],
+    [PROJECT_B]: [],
+  });
+  await expect.poll(() => feeds.opened.length, { timeout: 15_000 }).toBeGreaterThan(0);
+}
+
+/**
+ * Lets every watcher, request and render the view still had in it finish.
+ *
+ * A request is only *not made* after the tick it would have been made in, so an
+ * assertion of zero has to be given the chance to be wrong; twenty frames is far
+ * past the one flush plus one microtask `useRunPhases` needs.
+ */
+async function settle(): Promise<void> {
+  for (let frame = 0; frame < 20; frame += 1) {
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+  }
+}
+
+suite('EPIC-28-S37 — a plan-less run does not ask for phases', () => {
+  it('makes zero run-summary requests while the run has no plan (AC1)', async () => {
+    phasesAnswer.value = NO_PLAN_ANSWER;
+    await openProjectAUnframed();
+    await settle();
+
+    // The premise: this is a run with no adopted plan, not a run whose plan the
+    // spec merely has not looked at yet.
+    expect(useRunStore().planNodes).toHaveLength(0);
+
+    // Counted, not inferred from the absence of an error or of a band: a
+    // request that was made and answered `no-plan` leaves the screen looking
+    // exactly like one that was never made, and the round trip is the cost.
+    expect(asked.summaryOf).toEqual([]);
+    expect(one('[data-phases-band]')).toBeNull();
+  });
+});
+
+suite('EPIC-28-S38 — adopting a plan asks exactly once', () => {
+  it('asks once the moment the plan arrives, and draws the band (AC2)', async () => {
+    phasesAnswer.value = happyPhases();
+    await openProjectAUnframed();
+    await settle();
+    expect(asked.summaryOf).toEqual([]);
+
+    push(happyPath12());
+    await expect.poll(() => phaseRowsOnScreen().length, { timeout: 15_000 }).toBe(12);
+    await settle();
+
+    // Exactly one. The guard in AC1 delays nothing — the band is on screen —
+    // and drops nothing, and it does not turn the first plan frame into a
+    // second request either.
+    expect(asked.summaryOf).toEqual([HAPPY_PATH_RUN]);
+  });
+});
+
+suite('EPIC-28-S39 — the band’s absence is pinned, not assumed', () => {
+  it('renders no band element at all for a `basis: "no-plan"` answer (AC3)', async () => {
+    // A run whose plan *is* on screen, with the daemon answering `no-plan`
+    // anyway — a build whose projection cannot phase this plan. The request is
+    // therefore made and the answer really is read, which is what makes the
+    // assertion below about the band rather than about the fetch.
+    phasesAnswer.value = NO_PLAN_ANSWER;
+    await openProjectA();
+    await expect.poll(() => asked.summaryOf.length, { timeout: 15_000 }).toBeGreaterThan(0);
+    await settle();
+
+    // KAR-28.6 AC1's absence, pinned. This fails the moment `PhasesBand` is
+    // mounted on an empty phase list, which today renders a bare `Phases`
+    // header and two empty lists.
+    expect(one('[data-phases-band]')).toBeNull();
+    expect(phaseRowsOnScreen()).toHaveLength(0);
+    expect(workRowsOnScreen()).toHaveLength(0);
+    expect(one('[data-runs-link]')).toBeNull();
+  });
+});
+
+/* -------------------------------------------------------------------------- *
  * KAR-28.8 — the hidden panel stays hidden.
  *
  * Verifies: EPIC-28-S32, EPIC-28-S33, EPIC-28-S34, EPIC-28-S35, EPIC-28-S36 ·
