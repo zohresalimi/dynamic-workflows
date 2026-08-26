@@ -49,6 +49,7 @@ import { readToken } from '../api/token.ts';
 import { useNodeBodies } from '../app/useNodeBodies.ts';
 import { openLazyRunsFeed, RUNS_FEED } from '../app/useRunList.ts';
 import GateDecisionCard from '../components/gate/GateDecisionCard.vue';
+import TurnActivityFeed from '../components/output/TurnActivityFeed.vue';
 import TurnActivityStrip from '../components/output/TurnActivityStrip.vue';
 import RunHeader from '../components/RunHeader.vue';
 import TaskBoard from '../components/TaskBoard.vue';
@@ -343,6 +344,22 @@ const liveTurn = computed(() =>
   currentRun.value !== null && run.runId === currentRun.value ? run.liveTurnInFlight : null,
 );
 
+/**
+ * KAR-28.1 AC1 — whether the plan panel is showing the turn rather than a plan.
+ *
+ * Two conditions, and the second is the one AC1's last clause is about: a turn
+ * is in flight, **and** no plan has compiled yet. The moment nodes arrive the
+ * feed is gone and the canvas is what the panel shows — no refresh, and no
+ * decision of this view's own about "when a plan is ready", because
+ * `useNodeBodies()` having rows *is* that fact.
+ *
+ * The canvas is never unmounted for this. It owns the run's subscription
+ * (`../app/useRunFeed.ts`), so a `v-if` here would close the feed that is
+ * supposed to end the wait — the same trap `test/one-workspace-surface.test.ts`
+ * guards. The two share one grid cell and the feed paints over it.
+ */
+const showTurnFeed = computed(() => liveTurn.value !== null && rows.value.length === 0);
+
 /*
  * `planActivity`, `feedStatus`, `pendingPlan`, `hydratingPlan` and `stripped`
  * used to live here, feeding a `GraphEmptyNote` in the strip that stood in for
@@ -508,7 +525,28 @@ const runStatus = computed<RunStatus | null>(() => {
           >
         </header>
 
-        <PlanGraphView :run-id="currentRun" />
+        <!--
+          KAR-28.1 AC1 — the panel's body: the turn while one is running with no
+          plan yet, the canvas once the plan compiles.
+
+          One grid cell holding both, rather than a `v-if` around the canvas.
+          The canvas owns the run's subscription and must stay mounted at its
+          real size — a collapsed-to-zero canvas would have the renderer
+          measuring a 0×0 box and re-measuring on every transition. The feed
+          simply paints over it while it is there.
+        -->
+        <div class="workspace__panel-body">
+          <div class="workspace__canvas">
+            <PlanGraphView :run-id="currentRun" />
+          </div>
+          <TurnActivityFeed
+            v-if="showTurnFeed && liveTurn !== null"
+            class="workspace__feed"
+            :run-id="currentRun"
+            :project-id="projectId"
+            :node="liveTurn.node"
+          />
+        </div>
       </section>
 
       <aside class="workspace__board">
@@ -732,6 +770,29 @@ const runStatus = computed<RunStatus | null>(() => {
   font-size: var(--text-xs);
   color: var(--ink-faint);
   margin-left: auto;
+}
+
+/* KAR-28.1 — the panel's second row, holding the canvas and the feed in one
+   cell. Both children are full size; the feed is opaque and above, so the
+   canvas keeps its own measurement whether or not it is the thing being read. */
+.workspace__panel-body {
+  display: grid;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace__panel-body > * {
+  grid-area: 1 / 1;
+  min-height: 0;
+}
+
+.workspace__canvas {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.workspace__feed {
+  background: var(--surface);
 }
 
 .workspace__board {

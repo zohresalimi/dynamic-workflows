@@ -716,14 +716,14 @@ const sessionOpened = (seq: number, node: string, attempt: number): Event =>
   });
 
 /** One `stream-json` assistant frame carrying a tool call, as NDJSON. */
-const toolFrame = (seq: number, name: string): string =>
+const toolFrame = (seq: number, name: string, input: Record<string, unknown> = {}): string =>
   `${JSON.stringify({
     seq,
     stream: 'stdout',
     ts: PRE_EXEC_TS + seq,
     data: `${JSON.stringify({
       type: 'assistant',
-      message: { content: [{ type: 'tool_use', id: `tu_${name}`, name, input: {} }] },
+      message: { content: [{ type: 'tool_use', id: `tu_${name}`, name, input }] },
     })}\n`,
   })}\n`;
 
@@ -857,6 +857,49 @@ suite('EPIC-27-S19 — the plan panel names the actual state', () => {
 
     await expect.poll(() => stripText(), { timeout: 15_000 }).not.toBe('');
     expect(stripText()).not.toContain("Reading the run's ledger");
+  });
+});
+
+/**
+ * KAR-28.1 AC1 — the feed is *in the plan panel*, and the plan takes the panel
+ * back when it compiles.
+ *
+ * Verifies: EPIC-28-S05
+ *
+ * The panel is the assertion rather than the document: a feed rendered
+ * somewhere else on the page would satisfy "the rows are on screen" and miss
+ * the point of the story, which is that the several hundred pixels a framing
+ * turn spends showing an empty canvas are where the turn should be readable.
+ */
+suite('EPIC-28-S05 — the feed gives way to the plan', () => {
+  it('reads the running turn in the plan panel, then hands the panel back', async () => {
+    await openPreExecutionRun();
+    ioTail.value =
+      toolFrame(11, 'Read', { file_path: 'src/checkout.ts' }) +
+      toolFrame(12, 'mcp__linear__get_issue', { id: 'MET-1013' });
+    const subscriptions = feeds.opened.length;
+
+    push([sessionOpened(2, 'framing', 0)]);
+
+    await expect
+      .poll(() => one('[data-workspace-plan-panel] [data-turn-feed]'), { timeout: 15_000 })
+      .not.toBeNull();
+    await expect
+      .poll(() => all('[data-turn-feed-target]').map((node) => node.textContent), {
+        timeout: 15_000,
+      })
+      .toEqual(['src/checkout.ts', 'MET-1013']);
+
+    // The plan compiles. `seq` is lifted past the pre-execution frames already
+    // applied, because a duplicate `seq` is dropped by the sink rather than
+    // folded — the recording would otherwise arrive as a no-op.
+    push(happyPath12().map((event) => ({ ...event, seq: event.seq + 1_000 }) as Event));
+
+    await expect.poll(() => graphBodies().length, { timeout: 15_000 }).toBe(12);
+    expect(one('[data-turn-feed]')).toBeNull();
+    expect(one('[data-workspace-plan-panel]')).not.toBeNull();
+    // No refresh and no second subscription: the one canvas kept the one feed.
+    expect(feeds.opened).toHaveLength(subscriptions);
   });
 });
 
