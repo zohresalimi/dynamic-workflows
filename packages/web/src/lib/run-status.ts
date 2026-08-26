@@ -60,9 +60,28 @@
  * (*"planner — running · attempt 1 of 3 · since <instant>"*) reaches the frame
  * instead of the bare word `planning`. `packages/web` introduces no second
  * label vocabulary, and `test/one-status-label.test.ts` is what keeps that true.
+ *
+ * ## The one runtime import, and why it is only one (NF3)
+ *
+ * `runStatusLabel` is the whole of what this module imports at runtime, and
+ * that is a budget constraint as much as a design one. `@DeFlow/core`'s
+ * `run-state.ts` is where the zod schemas live, so naming *any* value from it —
+ * `initialRunState()` was the tempting one, to fill in the fields
+ * `runStatusLabel` reads that a surface holding a bare status does not have —
+ * drags the schema graph and zod itself into this application's **initial**
+ * chunk. It measured ~35 KB gzip over NF3's 220 KB ceiling when it did.
+ * `RunStatusLabelInput` exists so those fields can be stated instead of
+ * inherited; `test/integration/bundle-budget.test.ts` is what notices if a
+ * value import from `run-state.ts` ever creeps back.
  */
-import type { Event, PreExecutionTurns, RunState, RunStatus } from '@DeFlow/core';
-import { initialRunState, runStatusLabel } from '@DeFlow/core';
+import type {
+  Event,
+  PreExecutionTurns,
+  RunState,
+  RunStatus,
+  RunStatusLabelInput,
+} from '@DeFlow/core';
+import { runStatusLabel } from '@DeFlow/core';
 
 /** A run's status and the sentence beside it, from one derivation. */
 export interface RunStatusView {
@@ -177,13 +196,25 @@ export function runStatusView(state: RunState): RunStatusView {
  * The same answer for a surface that has a status and the run's pre-execution
  * turns rather than a whole `RunState`.
  *
- * The initial state is filled in around them rather than a second label
- * function being written: `runStatusLabel` reads `status`, `preExecution`, the
- * cancel record and the stall watermark, and a surface that has none of the
- * last two has nothing to say about them. That is exactly what
- * `initialRunState()` already says, so the composed pre-execution sentence
- * arrives and no other clause is invented.
+ * The remaining fields are *stated* rather than a second label function being
+ * written: `runStatusLabel` reads `status`, `preExecution`, the cancel record
+ * and the stall watermark, and a surface that has none of the last two has
+ * nothing to say about them. `cancel: null` and a zero watermark are that
+ * sentence — the same one `initialRunState()` used to say on this line, before
+ * saying it cost the initial chunk zod (see the header). `RunStatusLabelInput`
+ * is what keeps the list honest: the day the label reads a sixth field, this
+ * call stops compiling instead of being handed a default nobody chose.
+ *
+ * So the composed pre-execution sentence arrives and no other clause is
+ * invented.
  */
 export function runStatusViewOf(status: RunStatus, turns: PreExecutionTurns = {}): RunStatusView {
-  return runStatusView({ ...initialRunState(), status, preExecution: turns });
+  const state: RunStatusLabelInput = {
+    status,
+    preExecution: turns,
+    cancel: null,
+    watermarkSeq: 0,
+    stalledAtSeq: 0,
+  };
+  return { status, label: runStatusLabel(state) };
 }
