@@ -101,6 +101,7 @@ import { SEARCH_INPUT_ID } from '../../app/ids.ts';
 import { useProjects } from '../../app/useProjects.ts';
 import type { SubmittedTask } from '../../ledger/projections/index.ts';
 import { RUN_VIEW_NAMES } from '../../router/legacy-run.ts';
+import { topBarShowsRun } from '../../router/run-scope.ts';
 import RunProviderBanner from '../RunProviderBanner.vue';
 import RunTaskBanner from '../RunTaskBanner.vue';
 import { UiButton } from '../ui/index.ts';
@@ -222,25 +223,37 @@ const RUNS_ROUTE_NAMES = new Set<string>([
 const WORKFLOWS_ROUTE_NAMES = new Set(['project-workflows', 'project-run']);
 
 /**
- * Whether the view under this bar draws its own run header.
+ * Whether this bar shows the open run's provider, task and status.
  *
- * The redesign moves the run's task, provider and status into
- * `../RunHeader.vue` on the project's workflows view — where there is room for
- * them as a heading and a row of labelled pairs, instead of three things
- * squeezed between a breadcrumb and a search field. System law 4 then says
- * they must not *also* be here: a status said twice on one screen is two
- * things to keep in step, and the first one to go stale is the small one.
+ * **The question is "does this route show a run", and it is asked once, of
+ * `../../router/run-scope.ts`.** KAR-24.4 asked a narrower one here — "does
+ * this view draw its own run header" — because the redesign moved the run's
+ * task, provider and status into `../RunHeader.vue` on the project's workflows
+ * view, where there is room for them as a heading and a row of labelled pairs
+ * instead of three things squeezed between a breadcrumb and a search field.
+ * System law 4 then says they must not *also* be here: a status said twice on
+ * one screen is two things to keep in step, and the first one to go stale is
+ * the small one.
  *
- * They are hidden rather than deleted, and that is the whole of this
- * computed's reason to exist. Eight other routes show a run — its plan, its
- * timeline, its diff, its output — and none of them has a header of its own.
- * Removing the three mounts outright would take "what was this run asked to
- * do" off every one of them, which is a feature change wearing a redesign's
- * clothes (`../../views/composer.test.ts`'s EPIC-22-S27 is the scenario that
- * says so out loud: the task is readable *afterwards*, from the run's own
- * ledger, on the run's own view).
+ * They are hidden rather than deleted on those two routes, because eight other
+ * routes show a run — its plan, its timeline, its diff, its output — and none
+ * of them has a header of its own. Removing the three mounts outright would
+ * take "what was this run asked to do" off every one of them, which is a
+ * feature change wearing a redesign's clothes (`../../views/composer.test.ts`'s
+ * EPIC-22-S27 is the scenario that says so out loud: the task is readable
+ * *afterwards*, from the run's own ledger, on the run's own view).
+ *
+ * **KAR-28.3 — what the narrower question got wrong.** "Not a run view with a
+ * header" is not the same as "a run view", and the difference is every route
+ * that shows no run at all: the composer, the project chooser, settings, the
+ * run *list*, the gallery, not-found. Nothing clears the global run store on
+ * navigation — nothing should, a tab following a run keeps following it — so
+ * on 2026-08-25 `/projects/:id/new-run` described the previous run, down to an
+ * `aborted` pill over a composer for a run that did not exist yet. The three
+ * categories now live in one module, over one set of route names, with a guard
+ * that fails on a route added to none of them.
  */
-const runHasHeader = computed<boolean>(() => WORKFLOWS_ROUTE_NAMES.has(String(route.name ?? '')));
+const showsRun = computed<boolean>(() => topBarShowsRun(route.name));
 
 /** Which nav item's own name this route lights up — distinct from `name ===
  * item.name` because the Runs and Workflows items each stand for a set of
@@ -287,12 +300,11 @@ function isActive(itemName: string): boolean {
     </nav>
 
     <!--
-      System law 4 — a status is said once per surface, and on a route that
-      draws its own run header these three are that header's. See
-      `runHasHeader` in the script for the two route names and for why the bar
-      keeps them everywhere else rather than dropping them outright.
+      The run this page is about, and only where this page is about a run —
+      see `showsRun` in the script, and `../../router/run-scope.ts` for the
+      three categories of route it reads.
     -->
-    <template v-if="!runHasHeader">
+    <template v-if="showsRun">
       <RunProviderBanner />
       <RunTaskBanner :task="props.task" />
       <RunStatusPill />
