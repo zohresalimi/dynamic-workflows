@@ -389,6 +389,36 @@ export type SubgraphNode = NodeBase & {
 to exist. `itemIdFrom: 'value-hash'` is the safe default — index-derived ids move if the collection
 is re-derived after a replan, and moving ids is exactly what §1.1 forbids.
 
+### 3.3 A phase is a top-level step of the plan
+
+There is no `phase` field on a node, and there never has been. **A phase is derived**, and
+[ADR 0018](./adr/0018-a-phase-is-a-top-level-step-of-the-executing-plan.md) records why the word had
+to be given a domain meaning before anything could render it — `node.progress.phase` already exists
+and means something else entirely (one agent's inner state during one attempt, in vendor
+vocabulary).
+
+Over the graph the run adopted (`RunState.plan`), counting only `lifecycle: 'active'` nodes:
+
+- **A phase is a node no other node contains.** Containment is exactly three recorded forms, and
+  nothing else: the materialised-child id `<P.id>--<itemId>` above, a `map`/`loop` `body` target, and
+  a node of an inline `subgraph`'s own `nodes`.
+- **Its work items** are the nodes inside it — its materialised children if it has any, otherwise its
+  `body` template if it names one, otherwise itself. The `body` template drops out once children
+  exist: it is what the children were cut from and it never runs, so counting it would report `401`
+  for a 400-way fan-out.
+- **Its name** is the node's `title`, verbatim; **its order** is `topoSort()` filtered to the
+  top-level nodes; **its counts** are items with `NodeState.status === 'completed'` over items that
+  exist right now; **its state** folds from the items' statuses by a fixed precedence. No clock is
+  read anywhere in that list, and `total` can only ever be a count of node ids — a `map` that has not
+  fanned out reports the one node there is, never the width its `over` collection might turn out to
+  have.
+- **A run with no adopted plan has no phases**, and the projection says so rather than substituting
+  the stages of the run's own lifecycle.
+
+`runPhases(state)` in `@DeFlow/core` is the one implementation; it is served as the `phases` field of
+`GET /api/runs/:id` ([11 §6](./11-api-and-realtime.md#runs)) and survives a restart for the ordinary
+reason — it is a fold, not a cache.
+
 ---
 
 ## 4. `PlanPatch` (F2.4, F2.5)

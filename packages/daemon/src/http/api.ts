@@ -65,6 +65,7 @@ import {
   NodeIdSchema,
   parseDeFlowConfig,
   pendingGate,
+  runPhases,
   SpecEditRefused,
   sealTaskSpec,
   VerdictV2Schema,
@@ -1416,6 +1417,20 @@ export const api = new Hono()
     // one client and "neither" by the next. `POST /api/runs/:id/cancel` refuses
     // exactly the modes this leaves out, through this same function.
     const cancelLadders = runCancelLadders(view, runId, state);
+    // KAR-28.5 AC1, AC3 — and what shape this run has: the plan's top-level
+    // steps, each counted in the work the ledger records inside it
+    // (ADR 0018, docs/04-domain-model.md §3.3).
+    //
+    // A field of the run summary rather than a `/runs/:id/phases` of its own,
+    // for the reason KAR-14.1 AC8 gives about the cost rollup and ADR 0012
+    // gives about the whole frontend: a projection served from a second place
+    // is a second answer a `kill -9` can make disagree with the first.
+    //
+    // Unconditional, like `cancelLadders` above: a run with no adopted plan
+    // answers `basis: 'no-plan'` with an empty list, which is a fact. A missing
+    // field would be read as "not computed" by one client and "no phases" by
+    // the next.
+    const phases = runPhases(state);
     return c.json(
       {
         ...runSummary(
@@ -1432,6 +1447,7 @@ export const api = new Hono()
         ...(gate === null ? {} : { gate }),
         ...(waiting === null ? {} : { cancelWaiting: waiting }),
         cancelLadders,
+        phases,
       },
       200,
     );

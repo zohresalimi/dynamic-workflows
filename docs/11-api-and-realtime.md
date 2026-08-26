@@ -381,7 +381,7 @@ second amendment of 16 August 2026.
 | ------ | ------------------------------ | --------------------------------------------------------- | ---- |
 | `GET`  | `/runs?status=&limit=&cursor=` | List runs, newest first                                   |      |
 | `POST` | `/runs`                        | Create a run from free text, file, issue ref or spec doc. Takes an optional `projectId` (KAR-22.1) | F1.1 |
-| `GET`  | `/runs/:id`                    | Run summary: status, plan version, counts, cost, head seq |      |
+| `GET`  | `/runs/:id`                    | Run summary: status, plan version, counts, cost, head seq, and `phases` — the plan's top-level steps ([04 §3.3](./04-domain-model.md#33-a-phase-is-a-top-level-step-of-the-plan)) |      |
 | `POST` | `/runs/:id/spec/approve`       | Approve the `TaskSpec` — the real gate before execution   | F1.3 |
 | `POST` | `/runs/:id/spec/edit`          | Replace the framed document; appends `spec.amended`       | F1.3 |
 | `POST` | `/runs/:id/spec/reject`        | Reject with a reason and re-run the framing interview     | F1.3 |
